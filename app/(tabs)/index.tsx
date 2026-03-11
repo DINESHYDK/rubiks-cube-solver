@@ -7,7 +7,7 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <View style={styles.hero}>
         <Text style={styles.cubeEmoji}>🧊</Text>
-        <Text style={styles.title}>Rubik's Cube Solver</Text>
+        <Text style={styles.title}>YDK -- Rubik's Cube Solver</Text>
         <Text style={styles.subtitle}>
           Scan, solve, and learn — powered by AI
         </Text>
@@ -16,7 +16,10 @@ export default function HomeScreen() {
       <View style={styles.actions}>
         <Link href="/(tabs)/scan" asChild>
           <Pressable
-            style={[styles.actionCard, { backgroundColor: "#009B48" }]}
+            style={StyleSheet.flatten([
+              styles.actionCard,
+              { backgroundColor: "#009B48" },
+            ])}
           >
             <Text style={styles.actionEmoji}>📷</Text>
             <Text style={styles.actionTitle}>Scan Cube</Text>
@@ -26,7 +29,10 @@ export default function HomeScreen() {
 
         <Link href="/(tabs)/solve" asChild>
           <Pressable
-            style={[styles.actionCard, { backgroundColor: "#0046AD" }]}
+            style={StyleSheet.flatten([
+              styles.actionCard,
+              { backgroundColor: "#0046AD" },
+            ])}
           >
             <Text style={styles.actionEmoji}>🧊</Text>
             <Text style={styles.actionTitle}>3D Solver</Text>
@@ -36,7 +42,10 @@ export default function HomeScreen() {
 
         <Link href="/(tabs)/timer" asChild>
           <Pressable
-            style={[styles.actionCard, { backgroundColor: "#B71234" }]}
+            style={StyleSheet.flatten([
+              styles.actionCard,
+              { backgroundColor: "#B71234" },
+            ])}
           >
             <Text style={styles.actionEmoji}>⏱️</Text>
             <Text style={styles.actionTitle}>Timer</Text>
@@ -46,7 +55,10 @@ export default function HomeScreen() {
 
         <Link href="/(tabs)/history" asChild>
           <Pressable
-            style={[styles.actionCard, { backgroundColor: "#FF5800" }]}
+            style={StyleSheet.flatten([
+              styles.actionCard,
+              { backgroundColor: "#FF5800" },
+            ])}
           >
             <Text style={styles.actionEmoji}>📊</Text>
             <Text style={styles.actionTitle}>History</Text>
