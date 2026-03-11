@@ -1,11 +1,10 @@
-import React from 'react';
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
+import React from "react";
+import { SymbolView } from "expo-symbols";
+import { Tabs } from "expo-router";
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import Colors from "@/constants/Colors";
+import { useColorScheme } from "@/components/useColorScheme";
+import { useClientOnlyValue } from "@/components/useClientOnlyValue";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -14,56 +13,92 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
         headerShown: useClientOnlyValue(false, true),
-      }}>
+        tabBarStyle: {
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 4,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
+          title: "Home",
           tabBarIcon: ({ color }) => (
             <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
+              name={{ ios: "house.fill", android: "home", web: "home" }}
               tintColor={color}
-              size={28}
+              size={24}
             />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
           ),
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="scan"
         options={{
-          title: 'Tab Two',
+          title: "Scan",
           tabBarIcon: ({ color }) => (
             <SymbolView
               name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
+                ios: "camera.fill",
+                android: "photo_camera",
+                web: "photo_camera",
               }}
               tintColor={color}
-              size={28}
+              size={24}
             />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="solve"
+        options={{
+          title: "Solve",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{
+                ios: "cube.fill",
+                android: "view_in_ar",
+                web: "view_in_ar",
+              }}
+              tintColor={color}
+              size={24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "History",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{ ios: "clock.fill", android: "history", web: "history" }}
+              tintColor={color}
+              size={24}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="timer"
+        options={{
+          title: "Timer",
+          tabBarIcon: ({ color }) => (
+            <SymbolView
+              name={{ ios: "timer", android: "timer", web: "timer" }}
+              tintColor={color}
+              size={24}
+            />
+          ),
+        }}
+      />
+      {/* Hide the old "two" tab from template */}
+      <Tabs.Screen
+        name="two"
+        options={{
+          href: null,
         }}
       />
     </Tabs>
