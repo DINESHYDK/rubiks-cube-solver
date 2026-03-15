@@ -307,7 +307,6 @@ export default function ScanScreen() {
           </View>
         )}
 
-        {/* ── CAMERA ─────────────────────────────────────────────────────── */}
         {phase === "camera" && (
           <View style={styles.cameraSection}>
             <View style={styles.faceLabelBadge}>
