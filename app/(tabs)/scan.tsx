@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   useWindowDimensions,
-  Platform,
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,7 +20,7 @@ import {
   CUBE_COLORS,
   SOLVED_STATE,
 } from "@/lib/constants";
-import { rgbToHsv, classifyColor } from "@/lib/colorDetection";
+import { detectCubeColors } from "@/lib/detectFromImage";
 import { validateCubeState } from "@/lib/cubeState";
 import { useCubeStore } from "@/stores/cubeStore";
 
@@ -42,45 +41,6 @@ const ALL_COLORS: CubeColor[] = [
   "orange",
   "blue",
 ];
-
-// ── web canvas color detection ─────────────────────────────────────────────────
-async function detectColorsWeb(base64: string): Promise<CubeColor[]> {
-  return new Promise((resolve) => {
-    const img = new (window as any).Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const S = 270;
-      const canvas = document.createElement("canvas");
-      canvas.width = S;
-      canvas.height = S;
-      const ctx = canvas.getContext("2d")!;
-      const src = Math.min(img.width, img.height);
-      ctx.drawImage(
-        img,
-        (img.width - src) / 2,
-        (img.height - src) / 2,
-        src,
-        src,
-        0,
-        0,
-        S,
-        S,
-      );
-      const colors: CubeColor[] = [];
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          const px = ctx.getImageData(col * 90 + 45, row * 90 + 45, 1, 1).data;
-          colors.push(
-            classifyColor(rgbToHsv({ r: px[0], g: px[1], b: px[2] })),
-          );
-        }
-      }
-      resolve(colors);
-    };
-    img.onerror = () => resolve(Array(9).fill("white") as CubeColor[]);
-    img.src = `data:image/jpeg;base64,${base64}`;
-  });
-}
 
 type Phase = "idle" | "camera" | "review" | "complete";
 type Mode = "camera" | "manual";
@@ -383,10 +343,10 @@ export default function ScanScreen() {
                   });
                   if (!photo) return;
                   setPhotoUri(photo.uri);
-                  const colors =
-                    Platform.OS === "web" && photo.base64
-                      ? await detectColorsWeb(photo.base64)
-                      : (Array(9).fill("white") as CubeColor[]);
+                  const colors = await detectCubeColors(
+                    photo.uri,
+                    photo.base64 ?? undefined,
+                  );
                   setDetected(colors);
                   setPhase("review");
                 }}

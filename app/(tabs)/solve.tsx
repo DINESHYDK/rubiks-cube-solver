@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   ScrollView,
@@ -16,6 +16,7 @@ import {
 } from "@/lib/solver";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
+import { saveSolve } from "@/lib/api";
 
 const BG = "#0D1117",
   CARD = "#161B22",
@@ -36,6 +37,8 @@ export default function SolveScreen() {
   const [solving, setSolving] = useState(false);
   const [ticks, setTicks] = useState(0);
   const [fromScan, setFromScan] = useState(false);
+  const startTimeRef = useRef<number>(0);
+  const savedRef = useRef(false);
 
   // ── animation loop ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -113,7 +116,11 @@ export default function SolveScreen() {
   };
 
   const handlePlay = () => {
-    if (step >= moves.length - 1) setStep(-1);
+    if (step >= moves.length - 1) {
+      setStep(-1);
+      savedRef.current = false;
+    }
+    startTimeRef.current = Date.now();
     setPlaying(true);
   };
   const handlePause = () => setPlaying(false);
@@ -132,6 +139,21 @@ export default function SolveScreen() {
       : 0;
   const elapsed = `${Math.floor(ticks / 10)}.${ticks % 10}s`;
   const solved = moves.length > 0 && step >= moves.length - 1;
+
+  // ── auto-save when solve animation completes ─────────────────────────────
+  useEffect(() => {
+    if (!solved || savedRef.current || !scramble) return;
+    savedRef.current = true;
+    const solveTimeMs = startTimeRef.current
+      ? Date.now() - startTimeRef.current
+      : undefined;
+    saveSolve({
+      scramble,
+      solution: moves as any,
+      moveCount: moves.length,
+      solveTimeMs,
+    }).catch(() => {}); // best-effort, no UI error needed
+  }, [solved, scramble, moves]);
 
   return (
     <SafeAreaView style={styles.safe}>
