@@ -16,7 +16,7 @@ import {
 } from "@/lib/solver";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
-import { saveSolve } from "@/lib/api";
+import { saveSolve, solveCube } from "@/lib/api";
 
 const BG = "#0D1117",
   CARD = "#161B22",
@@ -95,24 +95,38 @@ export default function SolveScreen() {
     setTicks(0);
   };
 
-  const handleSolve = () => {
+  const handleSolve = async () => {
     if (!scramble) {
       handleNewScramble();
       return;
     }
     setSolving(true);
-    setTimeout(() => {
-      try {
-        setMoves(solveFromScramble(scramble));
-        setStep(-1);
-        setTicks(0);
-        setPlaying(false);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setSolving(false);
-      }
-    }, 50);
+    try {
+      // Use backend API for scramble solving (faster, more reliable)
+      const response = await solveCube(scramble);
+      setMoves(response.moves);
+      setStep(-1);
+      setTicks(0);
+      setPlaying(false);
+    } catch (e) {
+      console.error("[solve] backend error, falling back to local:", e);
+      // Fallback to local solver if backend fails
+      setTimeout(() => {
+        try {
+          setMoves(solveFromScramble(scramble));
+          setStep(-1);
+          setTicks(0);
+          setPlaying(false);
+        } catch (localErr) {
+          console.error("[solve] local solver also failed:", localErr);
+        } finally {
+          setSolving(false);
+        }
+      }, 50);
+      return;
+    } finally {
+      setSolving(false);
+    }
   };
 
   const handlePlay = () => {
