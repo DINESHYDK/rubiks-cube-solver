@@ -5,7 +5,7 @@ import GridOverlay from "./GridOverlay";
 
 interface Props {
   size: number;
-  cameraRef: React.RefObject<ExpoCameraView>;
+  cameraRef: React.RefObject<ExpoCameraView | null>;
 }
 
 export default function CameraView({ size, cameraRef }: Props) {

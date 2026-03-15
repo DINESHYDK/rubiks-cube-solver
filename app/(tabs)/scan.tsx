@@ -10,11 +10,20 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import CameraViewComponent from "@/components/camera/CameraView";
-import type { CubeColor, FaceName } from "@/types/cube";
-import { SCAN_ORDER, FACE_LABELS, CUBE_COLORS } from "@/lib/constants";
+import CubeNet from "@/components/cube/CubeNet";
+import type { CubeColor, CubeState, FaceName, FaceState } from "@/types/cube";
+import {
+  SCAN_ORDER,
+  FACE_LABELS,
+  CUBE_COLORS,
+  SOLVED_STATE,
+} from "@/lib/constants";
 import { rgbToHsv, classifyColor } from "@/lib/colorDetection";
+import { validateCubeState } from "@/lib/cubeState";
+import { useCubeStore } from "@/stores/cubeStore";
 
 // ── theme ─────────────────────────────────────────────────────────────────────
 const BG = "#0D1117",
@@ -74,14 +83,18 @@ async function detectColorsWeb(base64: string): Promise<CubeColor[]> {
 }
 
 type Phase = "idle" | "camera" | "review" | "complete";
+type Mode = "camera" | "manual";
 
 export default function ScanScreen() {
   const { width } = useWindowDimensions();
   const CAM_SIZE = Math.min(width - 40, 320);
+  const router = useRouter();
+  const { setCubeState } = useCubeStore();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
+  const [mode, setMode] = useState<Mode>("camera");
   const [phase, setPhase] = useState<Phase>("idle");
   const [faceIdx, setFaceIdx] = useState(0);
   const [photoUri, setPhotoUri] = useState("");
@@ -89,6 +102,10 @@ export default function ScanScreen() {
   const [scanned, setScanned] = useState<
     Partial<Record<FaceName, CubeColor[]>>
   >({});
+  const [manualState, setManualState] = useState<CubeState>(
+    JSON.parse(JSON.stringify(SOLVED_STATE)),
+  );
+  const [manualError, setManualError] = useState("");
 
   const currentFace = SCAN_ORDER[faceIdx];
 
@@ -102,30 +119,10 @@ export default function ScanScreen() {
     B: "#0046AD",
   };
 
-  // ── start scanning ─────────────────────────────────────────────────────────
+  // ── start camera scan ──────────────────────────────────────────────────────
   const handleStart = async () => {
     if (!permission?.granted) await requestPermission();
     setPhase("camera");
-  };
-
-  // ── capture photo ──────────────────────────────────────────────────────────
-  const handleCapture = async () => {
-    try {
-      const photo = await cameraRef.current?.takePictureAsync({
-        base64: true,
-        quality: 0.6,
-      });
-      if (!photo) return;
-      setPhotoUri(photo.uri);
-      const colors =
-        Platform.OS === "web" && photo.base64
-          ? await detectColorsWeb(photo.base64)
-          : (Array(9).fill("white") as CubeColor[]);
-      setDetected(colors);
-      setPhase("review");
-    } catch (e) {
-      console.error("Capture error:", e);
-    }
   };
 
   // ── cycle color on tap ─────────────────────────────────────────────────────
@@ -138,7 +135,7 @@ export default function ScanScreen() {
     });
   };
 
-  // ── confirm face ───────────────────────────────────────────────────────────
+  // ── confirm face (camera mode) ────────────────────────────────────────────
   const handleConfirm = () => {
     const updated = { ...scanned, [currentFace]: detected };
     setScanned(updated);
@@ -147,8 +144,43 @@ export default function ScanScreen() {
       setDetected(Array(9).fill("white"));
       setPhase("camera");
     } else {
+      // Build full CubeState and push to store
+      const fullState: CubeState = {
+        U: (updated.U ?? SOLVED_STATE.U) as FaceState,
+        R: (updated.R ?? SOLVED_STATE.R) as FaceState,
+        F: (updated.F ?? SOLVED_STATE.F) as FaceState,
+        D: (updated.D ?? SOLVED_STATE.D) as FaceState,
+        L: (updated.L ?? SOLVED_STATE.L) as FaceState,
+        B: (updated.B ?? SOLVED_STATE.B) as FaceState,
+      };
+      setCubeState(fullState);
       setPhase("complete");
     }
+  };
+
+  // ── manual net cell change ─────────────────────────────────────────────────
+  const handleManualCell = (
+    face: FaceName,
+    index: number,
+    color: CubeColor,
+  ) => {
+    setManualState((prev) => {
+      const next = { ...prev, [face]: [...prev[face]] as FaceState };
+      next[face][index] = color;
+      return next;
+    });
+    setManualError("");
+  };
+
+  // ── manual submit ──────────────────────────────────────────────────────────
+  const handleManualSubmit = () => {
+    const { valid, errors } = validateCubeState(manualState);
+    if (!valid) {
+      setManualError(errors[0]);
+      return;
+    }
+    setCubeState(manualState);
+    router.push("/(tabs)/solve");
   };
 
   // ── reset ──────────────────────────────────────────────────────────────────
@@ -157,6 +189,8 @@ export default function ScanScreen() {
     setFaceIdx(0);
     setScanned({});
     setDetected(Array(9).fill("white"));
+    setManualState(JSON.parse(JSON.stringify(SOLVED_STATE)));
+    setManualError("");
   };
 
   // ── face progress indicator ────────────────────────────────────────────────
@@ -203,27 +237,62 @@ export default function ScanScreen() {
       <ScrollView contentContainerStyle={styles.content} bounces={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Camera Scanner</Text>
+          <Text style={styles.title}>Cube Scanner</Text>
           <Text style={styles.subtitle}>
-            {phase === "idle" && "Scan each face one at a time"}
+            {phase === "idle" &&
+              (mode === "manual"
+                ? "Set each sticker color manually"
+                : "Scan each face one at a time")}
             {phase === "camera" &&
               `Align ${FACE_LABELS[currentFace]} with the grid`}
             {phase === "review" && "Tap any square to correct its color"}
-            {phase === "complete" && "All 6 faces scanned!"}
+            {phase === "complete" && "All 6 faces scanned — ready to solve!"}
           </Text>
         </View>
 
-        {/* Face progress */}
-        <FaceProgress />
-
-        {/* ── IDLE ───────────────────────────────────────────────────────── */}
+        {/* Mode toggle — only visible in idle */}
         {phase === "idle" && (
+          <View style={styles.modeRow}>
+            <Pressable
+              style={[styles.modePill, mode === "camera" && styles.modeActive]}
+              onPress={() => setMode("camera")}
+            >
+              <Text
+                style={[
+                  styles.modeTxt,
+                  mode === "camera" && styles.modeActiveTxt,
+                ]}
+              >
+                📷 Camera
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modePill, mode === "manual" && styles.modeActive]}
+              onPress={() => setMode("manual")}
+            >
+              <Text
+                style={[
+                  styles.modeTxt,
+                  mode === "manual" && styles.modeActiveTxt,
+                ]}
+              >
+                ✏️ Manual
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Face progress (camera only) */}
+        {mode === "camera" && <FaceProgress />}
+
+        {/* ── IDLE: CAMERA ───────────────────────────────────────────────── */}
+        {phase === "idle" && mode === "camera" && (
           <View style={styles.idleBox}>
             <Text style={styles.idleEmoji}>📷</Text>
             <Text style={styles.idleTitle}>Ready to Scan</Text>
             <Text style={styles.idleDesc}>
-              Hold each face of your cube in front of the camera.{"\n"}
-              The app detects colors using your camera.
+              Hold each face of your cube in front of the camera. The app
+              detects colors automatically.
             </Text>
             <View style={styles.instructRow}>
               {["1. Hold face flat", "2. Fill the grid", "3. Tap Capture"].map(
@@ -237,6 +306,44 @@ export default function ScanScreen() {
             <Pressable style={styles.startBtn} onPress={handleStart}>
               <Text style={styles.startBtnTxt}>Start Scanning</Text>
             </Pressable>
+          </View>
+        )}
+
+        {/* ── IDLE: MANUAL ────────────────────────────────────────────────── */}
+        {phase === "idle" && mode === "manual" && (
+          <View style={styles.manualBox}>
+            <Text style={styles.manualHint}>
+              Tap each sticker to cycle its color. Center squares (brighter
+              border) are fixed.
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <CubeNet
+                state={manualState}
+                editable
+                onCellChange={handleManualCell}
+              />
+            </ScrollView>
+            {!!manualError && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorTxt}>⚠ {manualError}</Text>
+              </View>
+            )}
+            <View style={styles.manualActions}>
+              <Pressable
+                style={styles.retakeBtn}
+                onPress={() =>
+                  setManualState(JSON.parse(JSON.stringify(SOLVED_STATE)))
+                }
+              >
+                <Text style={styles.retakeTxt}>↺ Reset</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.confirmBtn, { flex: 2 }]}
+                onPress={handleManualSubmit}
+              >
+                <Text style={styles.confirmTxt}>Solve This Cube →</Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -267,7 +374,23 @@ export default function ScanScreen() {
               >
                 <Text style={styles.retakeTxt}>✕ Cancel</Text>
               </Pressable>
-              <Pressable style={styles.captureBtn} onPress={handleCapture}>
+              <Pressable
+                style={styles.captureBtn}
+                onPress={async () => {
+                  const photo = await cameraRef.current?.takePictureAsync({
+                    base64: true,
+                    quality: 0.6,
+                  });
+                  if (!photo) return;
+                  setPhotoUri(photo.uri);
+                  const colors =
+                    Platform.OS === "web" && photo.base64
+                      ? await detectColorsWeb(photo.base64)
+                      : (Array(9).fill("white") as CubeColor[]);
+                  setDetected(colors);
+                  setPhase("review");
+                }}
+              >
                 <View style={styles.captureInner} />
               </Pressable>
               <View style={{ width: 80 }} />
@@ -318,10 +441,12 @@ export default function ScanScreen() {
             <Text style={styles.completeEmoji}>✅</Text>
             <Text style={styles.completeTitle}>All 6 Faces Scanned!</Text>
             <Text style={styles.completeDesc}>
-              Your cube state is ready.{"\n"}Head to the Solver to get a
-              solution.
+              Cube state saved. The Solver will auto-compute your solution.
             </Text>
-            <Pressable style={[styles.startBtn, { backgroundColor: BLUE }]}>
+            <Pressable
+              style={[styles.startBtn, { backgroundColor: BLUE }]}
+              onPress={() => router.push("/(tabs)/solve")}
+            >
               <Text style={styles.startBtnTxt}>🧩 Go to Solver</Text>
             </Pressable>
             <Pressable
@@ -355,6 +480,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   facePillTxt: { fontSize: 13, fontWeight: "700", color: TEXT },
+
+  // Mode toggle
+  modeRow: { flexDirection: "row", gap: 10, marginBottom: 18 },
+  modePill: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#161B22",
+    borderWidth: 1,
+    borderColor: "#30363D",
+    alignItems: "center",
+  },
+  modeActive: { backgroundColor: "#0046AD", borderColor: "#0046AD" },
+  modeTxt: { fontSize: 14, fontWeight: "600", color: "#8B949E" },
+  modeActiveTxt: { color: "#fff" },
 
   // Idle
   idleBox: { alignItems: "center", paddingTop: 20 },
@@ -391,6 +531,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   startBtnTxt: { fontSize: 16, fontWeight: "700", color: "#fff" },
+
+  // Manual
+  manualBox: { paddingTop: 8 },
+  manualHint: { fontSize: 13, color: MUTED, marginBottom: 16, lineHeight: 20 },
+  manualActions: { flexDirection: "row", gap: 12, marginTop: 20 },
+  errorBox: {
+    backgroundColor: "#2D1B1B",
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#B71234",
+  },
+  errorTxt: { fontSize: 13, color: "#FF6B6B" },
 
   // Camera
   cameraSection: { alignItems: "center" },

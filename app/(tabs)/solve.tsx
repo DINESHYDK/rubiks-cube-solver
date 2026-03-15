@@ -9,7 +9,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Cube3D from "@/components/cube/Cube3D";
-import { solveFromScramble, generateScramble } from "@/lib/solver";
+import {
+  solveFromScramble,
+  generateScramble,
+  solveCubeState,
+} from "@/lib/solver";
+import { useCubeStore } from "@/stores/cubeStore";
+import { SOLVED_STATE } from "@/lib/constants";
 
 const BG = "#0D1117",
   CARD = "#161B22",
@@ -21,12 +27,15 @@ const TEXT = "#E6EDF3",
 const SPEED = 700;
 
 export default function SolveScreen() {
+  const { cubeState, resetCube } = useCubeStore();
+
   const [scramble, setScramble] = useState("");
   const [moves, setMoves] = useState<string[]>([]);
   const [step, setStep] = useState(-1);
   const [playing, setPlaying] = useState(false);
   const [solving, setSolving] = useState(false);
   const [ticks, setTicks] = useState(0);
+  const [fromScan, setFromScan] = useState(false);
 
   // ── animation loop ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -51,8 +60,31 @@ export default function SolveScreen() {
     return () => clearInterval(id);
   }, [playing]);
 
+  // ── auto-solve when a scanned cube state arrives ────────────────────────────
+  useEffect(() => {
+    const isSolved = JSON.stringify(cubeState) === JSON.stringify(SOLVED_STATE);
+    if (isSolved) return;
+    setSolving(true);
+    setFromScan(true);
+    setScramble("📷 From camera / manual scan");
+    setTimeout(() => {
+      try {
+        setMoves(solveCubeState(cubeState));
+        setStep(-1);
+        setTicks(0);
+        setPlaying(false);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setSolving(false);
+      }
+    }, 80);
+  }, [cubeState]);
+
   // ── handlers ────────────────────────────────────────────────────────────────
   const handleNewScramble = () => {
+    resetCube();
+    setFromScan(false);
     setScramble(generateScramble(20));
     setMoves([]);
     setStep(-1);
@@ -136,6 +168,11 @@ export default function SolveScreen() {
                     ? `${moves.length} MOVES`
                     : "SOLVED STATE"}
               </Text>
+              {fromScan && !solved && (
+                <View style={styles.scanBadge}>
+                  <Text style={styles.scanBadgeTxt}>📷 SCAN</Text>
+                </View>
+              )}
             </View>
             {moves.length > 0 && step >= 0 && (
               <Text style={styles.stepText}>
@@ -169,9 +206,9 @@ export default function SolveScreen() {
           ))}
         </View>
 
-        {/* Scramble */}
+        {/* Scramble / source label */}
         <View style={styles.card}>
-          <Text style={styles.cardLbl}>SCRAMBLE</Text>
+          <Text style={styles.cardLbl}>{fromScan ? "SOURCE" : "SCRAMBLE"}</Text>
           <Text style={styles.monoText}>
             {scramble || "— tap 'New Scramble' to begin"}
           </Text>
@@ -361,6 +398,19 @@ const styles = StyleSheet.create({
   },
   ctrlIcon: { fontSize: 20, color: TEXT },
   dim: { opacity: 0.25 },
+  scanBadge: {
+    backgroundColor: "#0046AD",
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  scanBadgeTxt: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: "#fff",
+    letterSpacing: 0.5,
+  },
 
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
