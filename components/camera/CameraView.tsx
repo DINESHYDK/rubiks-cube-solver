@@ -1,40 +1,30 @@
-import React from 'react';
-import { StyleSheet } from 'react-native';
-import { View, Text } from '@/components/Themed';
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import { CameraView as ExpoCameraView } from "expo-camera";
+import GridOverlay from "./GridOverlay";
 
-/**
- * Camera feed wrapper for cube scanning.
- * TODO: Integrate expo-camera with live preview and snapshot capture.
- */
-export default function CameraView() {
+interface Props {
+  size: number;
+  cameraRef: React.RefObject<ExpoCameraView>;
+}
+
+export default function CameraView({ size, cameraRef }: Props) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.placeholder}>Camera Feed</Text>
-      <Text style={styles.hint}>expo-camera will render here</Text>
+    <View style={[styles.wrap, { width: size, height: size }]}>
+      <ExpoCameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing="back"
+      />
+      <GridOverlay size={size} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    width: '100%',
-    aspectRatio: 1,
+  wrap: {
     borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#444',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  placeholder: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    opacity: 0.5,
-  },
-  hint: {
-    fontSize: 12,
-    opacity: 0.3,
-    marginTop: 4,
+    overflow: "hidden",
+    backgroundColor: "#111",
   },
 });
