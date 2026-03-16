@@ -1,24 +1,25 @@
 import React from "react";
-import { SymbolView } from "expo-symbols";
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
 import { useClientOnlyValue } from "@/components/useClientOnlyValue";
-export default function TabLayout() {
+import { BG, CARD, TEXT, MUTED, BORDER } from "@/lib/theme";
 
+export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "#8B949E",
+        tabBarActiveTintColor: TEXT,
+        tabBarInactiveTintColor: MUTED,
         headerShown: useClientOnlyValue(false, true),
-        headerStyle: { backgroundColor: "#0D1117" },
-        headerTintColor: "#E6EDF3",
+        headerStyle: { backgroundColor: BG },
+        headerTintColor: TEXT,
         tabBarStyle: {
           height: 60,
           paddingBottom: 8,
           paddingTop: 4,
-          backgroundColor: "#0D1117",
-          borderTopColor: "#30363D",
+          backgroundColor: CARD,
+          borderTopColor: BORDER,
           borderTopWidth: 1,
         },
       }}
@@ -28,11 +29,7 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: "house.fill", android: "home", web: "home" }}
-              tintColor={color}
-              size={24}
-            />
+            <Ionicons name="home" size={24} color={color} />
           ),
         }}
       />
@@ -41,15 +38,7 @@ export default function TabLayout() {
         options={{
           title: "Scan",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: "camera.fill",
-                android: "photo_camera",
-                web: "photo_camera",
-              }}
-              tintColor={color}
-              size={24}
-            />
+            <Ionicons name="camera" size={24} color={color} />
           ),
         }}
       />
@@ -58,15 +47,7 @@ export default function TabLayout() {
         options={{
           title: "Solve",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: "cube.fill",
-                android: "view_in_ar",
-                web: "view_in_ar",
-              }}
-              tintColor={color}
-              size={24}
-            />
+            <Ionicons name="cube" size={24} color={color} />
           ),
         }}
       />
@@ -75,11 +56,7 @@ export default function TabLayout() {
         options={{
           title: "History",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: "clock.fill", android: "history", web: "history" }}
-              tintColor={color}
-              size={24}
-            />
+            <Ionicons name="time" size={24} color={color} />
           ),
         }}
       />
@@ -88,19 +65,8 @@ export default function TabLayout() {
         options={{
           title: "Timer",
           tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: "timer", android: "timer", web: "timer" }}
-              tintColor={color}
-              size={24}
-            />
+            <Ionicons name="stopwatch" size={24} color={color} />
           ),
-        }}
-      />
-      {/* Hide the old "two" tab from template */}
-      <Tabs.Screen
-        name="two"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

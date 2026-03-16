@@ -1,4 +1,6 @@
 import type { CubeColor, CubeState, FaceName } from '@/types/cube';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // ============================================
 // Color Constants
@@ -57,9 +59,37 @@ export const SOLVED_STATE: CubeState = {
 // API
 // ============================================
 
-export const API_BASE_URL = __DEV__
-  ? 'http://172.22.78.29:3001/api'
-  : 'https://your-backend.onrender.com/api';
+
+
+// Dynamically detect the dev server host for API calls
+function getApiBaseUrl(): string {
+  if (!__DEV__) {
+    return 'https://your-backend.onrender.com/api';
+  }
+  // In dev, use the Expo dev server host (works over WiFi with Expo Go)
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ?? // Expo SDK 55+
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ??
+    (Constants.manifest as any)?.debuggerHost;
+  if (debuggerHost) {
+    const host = debuggerHost.split(':')[0]; // strip port
+    return `http://${host}:3001/api`;
+  }
+  // Fallback for web — guard against SSR where window doesn't exist
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `http://${window.location.hostname}:3001/api`;
+  }
+  return 'http://localhost:3001/api';
+}
+
+// Lazy-evaluate so it doesn't crash during module import
+let _cachedApiUrl: string | null = null;
+export function getApiUrl(): string {
+  if (!_cachedApiUrl) _cachedApiUrl = getApiBaseUrl();
+  return _cachedApiUrl;
+}
+// Keep backward-compatible export (evaluated lazily via getter)
+export const API_BASE_URL = getApiBaseUrl();
 
 // ============================================
 // Animation

@@ -54,6 +54,7 @@ export default function SolveScreen() {
   const [activeMove, setActiveMove] = useState<any>(null);
   const startTimeRef = useRef<number>(0);
   const savedRef = useRef(false);
+  const lastSolvedStateRef = useRef<string>("");
 
   // New: playback mode & delay
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
@@ -68,8 +69,11 @@ export default function SolveScreen() {
 
   // ── Auto-solve scanned cube ──────────────────────────────────────
   useEffect(() => {
-    const isSolved = JSON.stringify(cubeState) === JSON.stringify(SOLVED_STATE);
-    if (isSolved) return;
+    const stateKey = JSON.stringify(cubeState);
+    const isSolved = stateKey === JSON.stringify(SOLVED_STATE);
+    // Skip if already solved, or if we already solved this exact state
+    if (isSolved || stateKey === lastSolvedStateRef.current) return;
+    lastSolvedStateRef.current = stateKey;
     setSolving(true);
     setFromScan(true);
     setScramble("(Scanned cube)");
@@ -349,6 +353,23 @@ export default function SolveScreen() {
           </View>
         </View>
       )}
+      {playbackMode === "auto" && Platform.OS !== "web" && (
+        <View style={s.nativeDelayRow}>
+          <Pressable
+            style={s.delayBtn}
+            onPress={() => setStepDelay((d) => Math.max(100, d - 200))}
+          >
+            <Text style={s.delayBtnTxt}>−</Text>
+          </Pressable>
+          <Text style={s.delayValue}>{stepDelay} ms</Text>
+          <Pressable
+            style={s.delayBtn}
+            onPress={() => setStepDelay((d) => Math.min(2500, d + 200))}
+          >
+            <Text style={s.delayBtnTxt}>+</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Prev / Play / Next */}
       <View style={s.transportRow}>
@@ -602,9 +623,10 @@ const s = StyleSheet.create({
   wideContainer: {
     flex: 1,
     flexDirection: "row",
+    width: "100%",
   },
   cubePanel: {
-    flex: 1,
+    width: "65%",
     backgroundColor: BG,
     justifyContent: "center",
     alignItems: "center",
@@ -628,7 +650,7 @@ const s = StyleSheet.create({
   },
   hintTxt: { fontSize: 12, color: MUTED },
   controlPanel: {
-    width: 380,
+    width: "35%",
     backgroundColor: CARD,
     borderLeftWidth: 1,
     borderLeftColor: BORDER,
@@ -780,6 +802,26 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   sliderLblTxt: { fontSize: 10, color: MUTED },
+
+  // ── Native Delay Controls ───────────────────────
+  nativeDelayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 16,
+    marginBottom: 12,
+  },
+  delayBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: CARD_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  delayBtnTxt: { fontSize: 18, fontWeight: "700", color: TEXT },
 
   // ── Transport Controls ──────────────────────────
   transportRow: {

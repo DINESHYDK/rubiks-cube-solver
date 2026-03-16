@@ -1,8 +1,9 @@
-import { StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
+import { StyleSheet, Pressable, Platform, useWindowDimensions, View, Text } from "react-native";
 import { Link } from "expo-router";
-import { Text, View } from "@/components/Themed";
 import React from "react";
 import { BG, CARD, BORDER, TEXT, MUTED, GREEN, BLUE, RED, ORANGE } from "@/lib/theme";
+
+import { Ionicons } from "@expo/vector-icons";
 
 // Conditionally import Cube3D for web
 let Cube3DComponent: any = null;
@@ -16,28 +17,28 @@ const ACTION_CARDS = [
   {
     href: "/(tabs)/scan" as const,
     color: GREEN,
-    icon: "[ ]",
+    icon: <Ionicons name="scan-outline" size={24} color="#fff" />,
     title: "Scan Cube",
     desc: "Use camera to scan your cube",
   },
   {
     href: "/(tabs)/solve" as const,
     color: BLUE,
-    icon: "3D",
+    icon: <Ionicons name="cube-outline" size={24} color="#fff" />,
     title: "3D Solver",
     desc: "Step-by-step 3D solution",
   },
   {
     href: "/(tabs)/timer" as const,
     color: RED,
-    icon: "T",
+    icon: <Ionicons name="stopwatch-outline" size={24} color="#fff" />,
     title: "Timer",
     desc: "Track your solve times",
   },
   {
     href: "/(tabs)/history" as const,
     color: ORANGE,
-    icon: "#",
+    icon: <Ionicons name="time-outline" size={24} color="#fff" />,
     title: "History",
     desc: "View past solves & stats",
   },
@@ -75,7 +76,7 @@ export default function HomeScreen() {
               ])}
             >
               <View style={styles.cardIconWrap}>
-                <Text style={styles.cardIconText}>{card.icon}</Text>
+                {card.icon}
               </View>
               <Text style={styles.actionTitle}>{card.title}</Text>
               <Text style={styles.actionDesc}>{card.desc}</Text>
