@@ -2,7 +2,7 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const CubeJS = require("cubejs");
 import type { CubeState } from "@/types/cube";
-import { cubeStateToString } from "./cubeState";
+import { cubeStateToString, stringToCubeState } from "./cubeState";
 
 let ready = false;
 
@@ -49,6 +49,36 @@ export function solveCubeState(state: CubeState): string[] {
 /**
  * Generate a random scramble string of `length` moves.
  */
+/**
+ * Compute intermediate CubeState snapshots for each step of the solution.
+ * Returns [scrambledState, afterMove1, afterMove2, ..., solvedState]
+ * Length = solution.length + 1
+ */
+export function getIntermediateStates(
+  scramble: string,
+  solution: string[],
+): CubeState[] {
+  initSolver();
+  const cube = new CubeJS();
+  cube.move(scramble);
+  const states: CubeState[] = [stringToCubeState(cube.asString())];
+  for (const move of solution) {
+    cube.move(move);
+    states.push(stringToCubeState(cube.asString()));
+  }
+  return states;
+}
+
+/**
+ * Get the CubeState after applying a scramble.
+ */
+export function getScrambledState(scramble: string): CubeState {
+  initSolver();
+  const cube = new CubeJS();
+  cube.move(scramble);
+  return stringToCubeState(cube.asString());
+}
+
 export function generateScramble(length = 20): string {
   const faces = ["R", "L", "U", "D", "F", "B"];
   const mods = ["", "'", "2"];

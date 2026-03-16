@@ -13,7 +13,10 @@ import {
   solveFromScramble,
   generateScramble,
   solveCubeState,
+  getIntermediateStates,
+  getScrambledState,
 } from "@/lib/solver";
+import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
 import { saveSolve, solveCube } from "@/lib/api";
@@ -37,6 +40,7 @@ export default function SolveScreen() {
   const [solving, setSolving] = useState(false);
   const [ticks, setTicks] = useState(0);
   const [fromScan, setFromScan] = useState(false);
+  const [cubeSnapshots, setCubeSnapshots] = useState<CubeState[]>([]);
   const startTimeRef = useRef<number>(0);
   const savedRef = useRef(false);
 
@@ -72,7 +76,9 @@ export default function SolveScreen() {
     setScramble("(Scanned cube)");
     setTimeout(() => {
       try {
-        setMoves(solveCubeState(cubeState));
+        const sol = solveCubeState(cubeState);
+        setMoves(sol);
+        setCubeSnapshots([cubeState]);
         setStep(-1);
         setTicks(0);
         setPlaying(false);
@@ -88,8 +94,10 @@ export default function SolveScreen() {
   const handleNewScramble = () => {
     resetCube();
     setFromScan(false);
-    setScramble(generateScramble(20));
+    const newScramble = generateScramble(20);
+    setScramble(newScramble);
     setMoves([]);
+    setCubeSnapshots([getScrambledState(newScramble)]);
     setStep(-1);
     setPlaying(false);
     setTicks(0);
@@ -102,8 +110,9 @@ export default function SolveScreen() {
     }
     setSolving(true);
     try {
-      // For scramble solving, use local solver (backend expects cube state, not scramble)
-      setMoves(solveFromScramble(scramble));
+      const sol = solveFromScramble(scramble);
+      setMoves(sol);
+      setCubeSnapshots(getIntermediateStates(scramble, sol));
       setStep(-1);
       setTicks(0);
       setPlaying(false);
@@ -167,7 +176,15 @@ export default function SolveScreen() {
 
         {/* Cube card */}
         <View style={styles.cubeCard}>
-          <Cube3D height={260} />
+          <Cube3D
+            height={260}
+            cubeState={
+              cubeSnapshots.length > 0
+                ? cubeSnapshots[Math.min(step + 1, cubeSnapshots.length - 1)]
+                : undefined
+            }
+            autoRotate={!playing}
+          />
           <View style={styles.cubeFooter}>
             <View style={styles.badgeRow}>
               <View
