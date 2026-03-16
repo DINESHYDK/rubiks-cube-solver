@@ -47,9 +47,6 @@ export function solveCubeState(state: CubeState): string[] {
 }
 
 /**
- * Generate a random scramble string of `length` moves.
- */
-/**
  * Compute intermediate CubeState snapshots for each step of the solution.
  * Returns [scrambledState, afterMove1, afterMove2, ..., solvedState]
  * Length = solution.length + 1
