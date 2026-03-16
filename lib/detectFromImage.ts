@@ -48,7 +48,7 @@ async function detectNative(photoUri: string): Promise<CubeColor[]> {
     // Get base64 JPEG from the photo
     const result = await ImageManipulator.manipulateAsync(
       photoUri,
-      [{ resize: { width: 640, height: 640 } }],
+      [{ resize: { width: 800 } }],
       { format: ImageManipulator.SaveFormat.JPEG, base64: true, compress: 0.8 },
     );
     if (!result.base64) throw new Error("No base64 from ImageManipulator");
