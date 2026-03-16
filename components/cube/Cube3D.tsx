@@ -1,136 +1,219 @@
-import React, { useRef, useMemo } from "react";
-import { View } from "react-native";
-import { Canvas, useFrame } from "@react-three/fiber/native";
-import type { Group } from "three";
-import type { CubeState, CubeColor } from "@/types/cube";
-import { SOLVED_STATE } from "@/lib/constants";
-import { RoundedBox } from "@react-three/drei/native";
+import React, { useRef, useState, useEffect } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { RoundedBox, OrbitControls } from "@react-three/drei/native"; // Note: /native for Expo
+import * as THREE from "three";
 
-// ── Color hex map ─────────────────────────────────────────────────────────────
-const HEX: Record<CubeColor, string> = {
-  white: "#FFFFFF",
-  red: "#B71234",
-  green: "#009B48",
-  yellow: "#FFD500",
-  orange: "#FF5800",
-  blue: "#0046AD",
+const COLORS = {
+  R: "#B71234",
+  L: "#FF5800",
+  U: "#EEEEEE",
+  D: "#FFD500",
+  F: "#009B48",
+  B: "#0046AD",
+  CORE: "#050505",
 };
-const X = "#111111"; // inner face
+const spacing = 1.02;
 
-// ── Sticker index mapping ─────────────────────────────────────────────────────
-// Each face's 9 stickers are indexed 0-8 (row-major, top-left to bottom-right
-// when looking directly at that face in standard orientation).
-const uIdx = (x: number, z: number) => (z + 1) * 3 + (x + 1);
-const dIdx = (x: number, z: number) => (1 - z) * 3 + (x + 1);
-const fIdx = (x: number, y: number) => (1 - y) * 3 + (x + 1);
-const bIdx = (x: number, y: number) => (1 - y) * 3 + (1 - x);
-const rIdx = (y: number, z: number) => (1 - y) * 3 + (z + 1);
-const lIdx = (y: number, z: number) => (1 - y) * 3 + (1 - z);
+// --- Helper: Convert Notation (e.g., "R", "U'") to Physics Math ---
+export const parseMove = (notation: string, isUndo = false) => {
+  const base = notation.replace("'", "");
+  let isPrime = notation.includes("'");
+  if (isUndo) isPrime = !isPrime;
 
-// Box geometry face order: +x, -x, +y, -y, +z, -z
-function cubieColors(x: number, y: number, z: number, s: CubeState): string[] {
-  return [
-    x === 1 ? HEX[s.R[rIdx(y, z)]] : X,
-    x === -1 ? HEX[s.L[lIdx(y, z)]] : X,
-    y === 1 ? HEX[s.U[uIdx(x, z)]] : X,
-    y === -1 ? HEX[s.D[dIdx(x, z)]] : X,
-    z === 1 ? HEX[s.F[fIdx(x, y)]] : X,
-    z === -1 ? HEX[s.B[bIdx(x, y)]] : X,
-  ];
-}
+  const dir = isPrime ? 1 : -1;
+  switch (base) {
+    case "R":
+      return { notation, axis: "x", layer: 1, dir: dir };
+    case "L":
+      return { notation, axis: "x", layer: -1, dir: -dir };
+    case "U":
+      return { notation, axis: "y", layer: 1, dir: dir };
+    case "D":
+      return { notation, axis: "y", layer: -1, dir: -dir };
+    case "F":
+      return { notation, axis: "z", layer: 1, dir: dir };
+    case "B":
+      return { notation, axis: "z", layer: -1, dir: -dir };
+    default:
+      return null;
+  }
+};
 
-// ── Components ────────────────────────────────────────────────────────────────
-type Pos = [number, number, number];
-
-function Cubie({ pos, colors }: { pos: Pos; colors: string[] }) {
+// --- The Individual Cubie (Sticker Architecture) ---
+const Cubie = ({ pos }: { pos: [number, number, number] }) => {
   return (
-    <group position={[pos[0] * 1.02, pos[1] * 1.02, pos[2] * 1.02]}>
-      {/* We use RoundedBox for that premium, physical speed-cube look */}
-      <RoundedBox args={[0.96, 0.96, 0.96]} radius={0.08} smoothness={4}>
-        {colors.map((c, i) => (
-          <meshPhysicalMaterial
-            key={i}
-            attach={`material-${i}`}
-            color={c}
-            roughness={0.15} // Lower roughness = shinier
-            metalness={0.05}
-            clearcoat={1.0} // Gives it that hard-plastic glare
-            clearcoatRoughness={0.1}
-          />
-        ))}
+    <group position={[pos[0] * spacing, pos[1] * spacing, pos[2] * spacing]}>
+      <RoundedBox args={[0.96, 0.96, 0.96]} radius={0.06} smoothness={4}>
+        <meshPhysicalMaterial
+          color={COLORS.CORE}
+          roughness={0.2}
+          metalness={0.1}
+          clearcoat={1}
+        />
       </RoundedBox>
+
+      {pos[0] === 1 && (
+        <Sticker
+          color={COLORS.R}
+          pos={[0.485, 0, 0]}
+          rot={[0, Math.PI / 2, 0]}
+        />
+      )}
+      {pos[0] === -1 && (
+        <Sticker
+          color={COLORS.L}
+          pos={[-0.485, 0, 0]}
+          rot={[0, -Math.PI / 2, 0]}
+        />
+      )}
+      {pos[1] === 1 && (
+        <Sticker
+          color={COLORS.U}
+          pos={[0, 0.485, 0]}
+          rot={[-Math.PI / 2, 0, 0]}
+        />
+      )}
+      {pos[1] === -1 && (
+        <Sticker
+          color={COLORS.D}
+          pos={[0, -0.485, 0]}
+          rot={[Math.PI / 2, 0, 0]}
+        />
+      )}
+      {pos[2] === 1 && (
+        <Sticker color={COLORS.F} pos={[0, 0, 0.485]} rot={[0, 0, 0]} />
+      )}
+      {pos[2] === -1 && (
+        <Sticker color={COLORS.B} pos={[0, 0, -0.485]} rot={[0, Math.PI, 0]} />
+      )}
     </group>
   );
-}
+};
 
-const POSITIONS: Pos[] = [];
-for (let x = -1; x <= 1; x++)
-  for (let y = -1; y <= 1; y++)
-    for (let z = -1; z <= 1; z++)
-      if (!(x === 0 && y === 0 && z === 0)) POSITIONS.push([x, y, z]);
+const Sticker = ({ color, pos, rot }: any) => (
+  <mesh position={pos} rotation={rot}>
+    <planeGeometry args={[0.82, 0.82]} />
+    <meshPhysicalMaterial color={color} roughness={0.15} clearcoat={1} />
+  </mesh>
+);
 
-function Scene({
-  cubeState,
-  autoRotate,
-}: {
-  cubeState: CubeState;
-  autoRotate: boolean;
-}) {
-  const groupRef = useRef<Group>(null!);
+// --- The Core Scene Logic ---
+const Scene = ({ currentMove, onMoveComplete, animationSpeed = 3.0 }: any) => {
+  const cubeGroupRef = useRef<THREE.Group>(null);
+  const pivotRef = useRef<THREE.Group>(null);
+  const [animating, setAnimating] = useState(false);
+  const animProgress = useRef(0);
 
-  useFrame((_, delta) => {
-    if (autoRotate) {
-      groupRef.current.rotation.y += delta * 0.55;
-      groupRef.current.rotation.x += delta * 0.08;
+  // Generate the 27 positions once
+  const initialCubies = useRef<[number, number, number][]>([]);
+  if (initialCubies.current.length === 0) {
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 1; y++) {
+        for (let z = -1; z <= 1; z++) {
+          initialCubies.current.push([x, y, z]);
+        }
+      }
+    }
+  }
+
+  // Intercept the new move and prepare the Pivot Group
+  useEffect(() => {
+    if (currentMove && !animating && cubeGroupRef.current && pivotRef.current) {
+      setAnimating(true);
+      animProgress.current = 0;
+
+      // Attach targeted cubies to the pivot
+      const children = [...cubeGroupRef.current.children];
+      for (let i = children.length - 1; i >= 0; i--) {
+        const c = children[i];
+        if (c === pivotRef.current) continue;
+        // Target the specific face layer
+        if (
+          Math.abs(
+            c.position[currentMove.axis as "x" | "y" | "z"] -
+              currentMove.layer * spacing,
+          ) < 0.1
+        ) {
+          pivotRef.current.attach(c);
+        }
+      }
+    }
+  }, [currentMove]);
+
+  // The 60FPS Animation Loop
+  useFrame((state, delta) => {
+    if (animating && currentMove && pivotRef.current && cubeGroupRef.current) {
+      animProgress.current += delta * animationSpeed;
+
+      const easeInOut = (t: number) =>
+        t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+      let progress = Math.min(animProgress.current, 1);
+
+      pivotRef.current.rotation[currentMove.axis as "x" | "y" | "z"] =
+        currentMove.dir * (Math.PI / 2) * easeInOut(progress);
+
+      if (progress >= 1) {
+        // Snap to perfect 90 degrees
+        pivotRef.current.rotation[currentMove.axis as "x" | "y" | "z"] =
+          currentMove.dir * (Math.PI / 2);
+        pivotRef.current.updateMatrixWorld();
+
+        // Detach back to main group and fix floating point math drift
+        const pivotChildren = [...pivotRef.current.children];
+        for (let i = pivotChildren.length - 1; i >= 0; i--) {
+          const c = pivotChildren[i];
+          cubeGroupRef.current.attach(c);
+          c.position.set(
+            Math.round(c.position.x / spacing) * spacing,
+            Math.round(c.position.y / spacing) * spacing,
+            Math.round(c.position.z / spacing) * spacing,
+          );
+          c.rotation.set(
+            Math.round(c.rotation.x / (Math.PI / 2)) * (Math.PI / 2),
+            Math.round(c.rotation.y / (Math.PI / 2)) * (Math.PI / 2),
+            Math.round(c.rotation.z / (Math.PI / 2)) * (Math.PI / 2),
+          );
+        }
+
+        pivotRef.current.rotation.set(0, 0, 0);
+        setAnimating(false);
+        if (onMoveComplete) onMoveComplete();
+      }
     }
   });
 
-  const cubies = useMemo(
-    () =>
-      POSITIONS.map((pos) => ({
-        pos,
-        colors: cubieColors(pos[0], pos[1], pos[2], cubeState),
-      })),
-    [cubeState],
-  );
-
   return (
-    <group ref={groupRef} rotation={[0.35, 0.55, 0]}>
-      {cubies.map(({ pos, colors }) => (
-        <Cubie key={pos.join(",")} pos={pos} colors={colors} />
-      ))}
+    <group>
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[10, 15, 10]} intensity={1.2} />
+      <group ref={cubeGroupRef}>
+        <group ref={pivotRef} />
+        {initialCubies.current.map((pos, idx) => (
+          <Cubie key={idx} pos={pos} />
+        ))}
+      </group>
     </group>
   );
-}
-
-// ── Public API ────────────────────────────────────────────────────────────────
-interface Cube3DProps {
-  width?: number | string;
-  height?: number;
-  style?: object;
-  cubeState?: CubeState;
-  autoRotate?: boolean;
-}
+};
 
 export default function Cube3D({
-  width = "100%",
-  height = 300,
-  style,
-  cubeState,
-  autoRotate = true,
-}: Cube3DProps) {
-  const state = cubeState ?? SOLVED_STATE;
+  currentMove,
+  onMoveComplete,
+  animationSpeed,
+}: any) {
   return (
-    <View style={[{ width: width as any, height }, style]}>
-      <Canvas
-        camera={{ position: [4, 3, 4], fov: 45 }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <ambientLight intensity={0.75} />
-        <directionalLight position={[6, 8, 6]} intensity={1.4} />
-        <directionalLight position={[-4, -3, -4]} intensity={0.3} />
-        <Scene cubeState={state} autoRotate={autoRotate} />
-      </Canvas>
-    </View>
+    <Canvas camera={{ position: [5, 4, 6], fov: 45 }}>
+      <Scene
+        currentMove={currentMove}
+        onMoveComplete={onMoveComplete}
+        animationSpeed={animationSpeed}
+      />
+      <OrbitControls
+        enableDamping
+        dampingFactor={0.05}
+        minDistance={4}
+        maxDistance={15}
+      />
+    </Canvas>
   );
 }

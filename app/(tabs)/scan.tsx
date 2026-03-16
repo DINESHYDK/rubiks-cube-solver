@@ -25,13 +25,7 @@ import { validateCubeState } from "@/lib/cubeState";
 import { useCubeStore } from "@/stores/cubeStore";
 
 // ── theme ─────────────────────────────────────────────────────────────────────
-const BG = "#0D1117",
-  CARD = "#161B22",
-  BORDER = "#30363D";
-const TEXT = "#E6EDF3",
-  MUTED = "#8B949E",
-  GREEN = "#009B48",
-  BLUE = "#0046AD";
+import { BG, CARD, BORDER, TEXT, MUTED, GREEN, BLUE } from "@/lib/theme";
 
 const ALL_COLORS: CubeColor[] = [
   "white",
@@ -223,7 +217,7 @@ export default function ScanScreen() {
                   mode === "camera" && styles.modeActiveTxt,
                 ]}
               >
-                📷 Camera
+                Camera
               </Text>
             </Pressable>
             <Pressable
@@ -236,7 +230,7 @@ export default function ScanScreen() {
                   mode === "manual" && styles.modeActiveTxt,
                 ]}
               >
-                ✏️ Manual
+                Manual
               </Text>
             </Pressable>
           </View>
@@ -248,7 +242,9 @@ export default function ScanScreen() {
         {/* ── IDLE: CAMERA ───────────────────────────────────────────────── */}
         {phase === "idle" && mode === "camera" && (
           <View style={styles.idleBox}>
-            <Text style={styles.idleEmoji}>📷</Text>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 24, fontWeight: '700', color: '#fff' }}>CAM</Text>
+            </View>
             <Text style={styles.idleTitle}>Ready to Scan</Text>
             <Text style={styles.idleDesc}>
               Hold each face of your cube in front of the camera. The app
@@ -285,7 +281,7 @@ export default function ScanScreen() {
             </ScrollView>
             {!!manualError && (
               <View style={styles.errorBox}>
-                <Text style={styles.errorTxt}>⚠ {manualError}</Text>
+                <Text style={styles.errorTxt}>{manualError}</Text>
               </View>
             )}
             <View style={styles.manualActions}>
@@ -295,13 +291,13 @@ export default function ScanScreen() {
                   setManualState(JSON.parse(JSON.stringify(SOLVED_STATE)))
                 }
               >
-                <Text style={styles.retakeTxt}>↺ Reset</Text>
+                <Text style={styles.retakeTxt}>Reset</Text>
               </Pressable>
               <Pressable
                 style={[styles.confirmBtn, { flex: 2 }]}
                 onPress={handleManualSubmit}
               >
-                <Text style={styles.confirmTxt}>Solve This Cube →</Text>
+                <Text style={styles.confirmTxt}>Solve This Cube</Text>
               </Pressable>
             </View>
           </View>
@@ -331,7 +327,7 @@ export default function ScanScreen() {
                 style={styles.retakeBtn}
                 onPress={() => setPhase("idle")}
               >
-                <Text style={styles.retakeTxt}>✕ Cancel</Text>
+                <Text style={styles.retakeTxt}>Cancel</Text>
               </Pressable>
               <Pressable
                 style={styles.captureBtn}
@@ -383,7 +379,7 @@ export default function ScanScreen() {
                 style={styles.retakeBtn}
                 onPress={() => setPhase("camera")}
               >
-                <Text style={styles.retakeTxt}>↩ Retake</Text>
+                <Text style={styles.retakeTxt}>Retake</Text>
               </Pressable>
               <Pressable style={styles.confirmBtn} onPress={handleConfirm}>
                 <Text style={styles.confirmTxt}>
@@ -397,7 +393,9 @@ export default function ScanScreen() {
         {/* ── COMPLETE ───────────────────────────────────────────────────── */}
         {phase === "complete" && (
           <View style={styles.completeBox}>
-            <Text style={styles.completeEmoji}>✅</Text>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: 28, fontWeight: '700', color: '#fff' }}>OK</Text>
+            </View>
             <Text style={styles.completeTitle}>All 6 Faces Scanned!</Text>
             <Text style={styles.completeDesc}>
               Cube state saved. The Solver will auto-compute your solution.
@@ -406,13 +404,13 @@ export default function ScanScreen() {
               style={[styles.startBtn, { backgroundColor: BLUE }]}
               onPress={() => router.push("/(tabs)/solve")}
             >
-              <Text style={styles.startBtnTxt}>🧩 Go to Solver</Text>
+              <Text style={styles.startBtnTxt}>Go to Solver</Text>
             </Pressable>
             <Pressable
               style={[styles.retakeBtn, { marginTop: 12, alignSelf: "center" }]}
               onPress={handleReset}
             >
-              <Text style={styles.retakeTxt}>↩ Scan Again</Text>
+              <Text style={styles.retakeTxt}>Scan Again</Text>
             </Pressable>
           </View>
         )}

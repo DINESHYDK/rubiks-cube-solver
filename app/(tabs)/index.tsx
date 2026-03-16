@@ -1,71 +1,87 @@
-import { StyleSheet, Pressable } from "react-native";
+import { StyleSheet, Pressable, Platform, useWindowDimensions } from "react-native";
 import { Link } from "expo-router";
 import { Text, View } from "@/components/Themed";
 import React from "react";
+import { BG, CARD, BORDER, TEXT, MUTED, GREEN, BLUE, RED, ORANGE } from "@/lib/theme";
+
+// Conditionally import Cube3D for web
+let Cube3DComponent: any = null;
+if (Platform.OS === "web") {
+  try {
+    Cube3DComponent = require("@/components/cube/Cube3D").default;
+  } catch {}
+}
+
+const ACTION_CARDS = [
+  {
+    href: "/(tabs)/scan" as const,
+    color: GREEN,
+    icon: "[ ]",
+    title: "Scan Cube",
+    desc: "Use camera to scan your cube",
+  },
+  {
+    href: "/(tabs)/solve" as const,
+    color: BLUE,
+    icon: "3D",
+    title: "3D Solver",
+    desc: "Step-by-step 3D solution",
+  },
+  {
+    href: "/(tabs)/timer" as const,
+    color: RED,
+    icon: "T",
+    title: "Timer",
+    desc: "Track your solve times",
+  },
+  {
+    href: "/(tabs)/history" as const,
+    color: ORANGE,
+    icon: "#",
+    title: "History",
+    desc: "View past solves & stats",
+  },
+];
 
 export default function HomeScreen() {
+  const { width } = useWindowDimensions();
+  const showCube = Platform.OS === "web" && Cube3DComponent != null;
+
   return (
     <View style={styles.container}>
       <View style={styles.hero}>
-        <Text style={styles.cubeEmoji}>🧊</Text>
-        <Text style={styles.title}>YDK -- Rubik's Cube Solver</Text>
+        {showCube ? (
+          <View style={styles.cubeWrap}>
+            <Cube3DComponent height={200} autoRotate />
+          </View>
+        ) : (
+          <View style={styles.cubeIcon}>
+            <Text style={styles.cubeIconText}>3D</Text>
+          </View>
+        )}
+        <Text style={styles.title}>YDK — Rubik's Cube Solver</Text>
         <Text style={styles.subtitle}>
           Scan, solve, and learn — powered by AI
         </Text>
       </View>
 
       <View style={styles.actions}>
-        <Link href="/(tabs)/scan" asChild>
-          <Pressable
-            style={StyleSheet.flatten([
-              styles.actionCard,
-              { backgroundColor: "#009B48" },
-            ])}
-          >
-            <Text style={styles.actionEmoji}>📷</Text>
-            <Text style={styles.actionTitle}>Scan Cube</Text>
-            <Text style={styles.actionDesc}>Use camera to scan your cube</Text>
-          </Pressable>
-        </Link>
-
-        <Link href="/(tabs)/solve" asChild>
-          <Pressable
-            style={StyleSheet.flatten([
-              styles.actionCard,
-              { backgroundColor: "#0046AD" },
-            ])}
-          >
-            <Text style={styles.actionEmoji}>🧊</Text>
-            <Text style={styles.actionTitle}>3D Solver</Text>
-            <Text style={styles.actionDesc}>Step-by-step 3D solution</Text>
-          </Pressable>
-        </Link>
-
-        <Link href="/(tabs)/timer" asChild>
-          <Pressable
-            style={StyleSheet.flatten([
-              styles.actionCard,
-              { backgroundColor: "#B71234" },
-            ])}
-          >
-            <Text style={styles.actionEmoji}>⏱️</Text>
-            <Text style={styles.actionTitle}>Timer</Text>
-            <Text style={styles.actionDesc}>Track your solve times</Text>
-          </Pressable>
-        </Link>
-
-        <Link href="/(tabs)/history" asChild>
-          <Pressable
-            style={StyleSheet.flatten([
-              styles.actionCard,
-              { backgroundColor: "#FF5800" },
-            ])}
-          >
-            <Text style={styles.actionEmoji}>📊</Text>
-            <Text style={styles.actionTitle}>History</Text>
-            <Text style={styles.actionDesc}>View past solves & stats</Text>
-          </Pressable>
-        </Link>
+        {ACTION_CARDS.map((card) => (
+          <Link key={card.href} href={card.href} asChild>
+            <Pressable
+              style={StyleSheet.flatten([
+                styles.actionCard,
+                { backgroundColor: card.color },
+              ])}
+            >
+              <View style={styles.cardIconWrap}>
+                <Text style={styles.cardIconText}>{card.icon}</Text>
+              </View>
+              <Text style={styles.actionTitle}>{card.title}</Text>
+              <Text style={styles.actionDesc}>{card.desc}</Text>
+            </Pressable>
+          </Link>
+        ))}
       </View>
     </View>
   );
@@ -75,24 +91,41 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
+    backgroundColor: BG,
   },
   hero: {
     alignItems: "center",
-    marginTop: 40,
-    marginBottom: 40,
+    marginTop: 30,
+    marginBottom: 36,
   },
-  cubeEmoji: {
-    fontSize: 72,
+  cubeWrap: {
+    width: 220,
+    height: 200,
     marginBottom: 16,
+  },
+  cubeIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: BLUE,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  cubeIconText: {
+    fontSize: 28,
+    fontWeight: "700",
+    color: "#fff",
   },
   title: {
     fontSize: 28,
     fontWeight: "bold",
+    color: TEXT,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 15,
-    opacity: 0.6,
+    color: MUTED,
     textAlign: "center",
   },
   actions: {
@@ -107,9 +140,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: "center",
   },
-  actionEmoji: {
-    fontSize: 32,
+  cardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 10,
+  },
+  cardIconText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#fff",
   },
   actionTitle: {
     color: "#fff",

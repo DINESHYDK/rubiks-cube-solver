@@ -6,9 +6,11 @@ import {
   Text,
   View,
   ActivityIndicator,
+  Platform,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Cube3D from "@/components/cube/Cube3D";
+import Cube3D, { parseMove } from "@/components/cube/Cube3D";
 import {
   solveFromScramble,
   generateScramble,
@@ -20,19 +22,27 @@ import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
 import { saveSolve } from "@/lib/api";
+import {
+  BG, CARD, CARD_ALT, BORDER,
+  TEXT, MUTED, BLUE, GREEN, RED, ORANGE, YELLOW,
+} from "@/lib/theme";
 
-const BG = "#0D1117",
-  CARD = "#161B22",
-  BORDER = "#30363D";
-const TEXT = "#E6EDF3",
-  MUTED = "#8B949E",
-  BLUE = "#0046AD",
-  GREEN = "#009B48";
-const SPEED = 700;
+// ── Move Notation Data ─────────────────────────────────────────────────
+const MOVE_NOTATION = [
+  { face: "R", color: RED,    label: "Right",  cw: "R",  ccw: "R'" },
+  { face: "L", color: ORANGE, label: "Left",   cw: "L",  ccw: "L'" },
+  { face: "U", color: "#EEE", label: "Top",    cw: "U",  ccw: "U'" },
+  { face: "D", color: YELLOW, label: "Bottom", cw: "D",  ccw: "D'" },
+  { face: "F", color: GREEN,  label: "Front",  cw: "F",  ccw: "F'" },
+  { face: "B", color: BLUE,   label: "Back",   cw: "B",  ccw: "B'" },
+];
 
 export default function SolveScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = Platform.OS === "web" && windowWidth >= 768;
   const { cubeState, resetCube } = useCubeStore();
 
+  // ── State ──────────────────────────────────────────────────────────
   const [scramble, setScramble] = useState("");
   const [moves, setMoves] = useState<string[]>([]);
   const [step, setStep] = useState(-1);
@@ -41,33 +51,22 @@ export default function SolveScreen() {
   const [ticks, setTicks] = useState(0);
   const [fromScan, setFromScan] = useState(false);
   const [cubeSnapshots, setCubeSnapshots] = useState<CubeState[]>([]);
+  const [activeMove, setActiveMove] = useState<any>(null);
   const startTimeRef = useRef<number>(0);
   const savedRef = useRef(false);
 
-  // ── animation loop ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!playing || moves.length === 0) return;
-    const id = setInterval(() => {
-      setStep((prev) => {
-        const next = prev + 1;
-        if (next >= moves.length) {
-          setPlaying(false);
-          return prev;
-        }
-        return next;
-      });
-    }, SPEED);
-    return () => clearInterval(id);
-  }, [playing, moves.length]);
+  // New: playback mode & delay
+  const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
+  const [stepDelay, setStepDelay] = useState(2500);
 
-  // ── elapsed timer ───────────────────────────────────────────────────────────
+  // ── Elapsed timer ────────────────────────────────────────────────
   useEffect(() => {
     if (!playing) return;
     const id = setInterval(() => setTicks((t) => t + 1), 100);
     return () => clearInterval(id);
   }, [playing]);
 
-  // ── auto-solve when a scanned cube state arrives ────────────────────────────
+  // ── Auto-solve scanned cube ──────────────────────────────────────
   useEffect(() => {
     const isSolved = JSON.stringify(cubeState) === JSON.stringify(SOLVED_STATE);
     if (isSolved) return;
@@ -90,7 +89,7 @@ export default function SolveScreen() {
     }, 80);
   }, [cubeState]);
 
-  // ── handlers ────────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────
   const handleNewScramble = () => {
     resetCube();
     setFromScan(false);
@@ -112,11 +111,9 @@ export default function SolveScreen() {
     try {
       let sol: string[];
       if (fromScan) {
-        // For scanned cubes, solve directly from cubeState
         sol = solveCubeState(cubeState);
         setCubeSnapshots([cubeState]);
       } else {
-        // For scrambles, use scramble string
         sol = solveFromScramble(scramble);
         setCubeSnapshots(getIntermediateStates(scramble, sol));
       }
@@ -131,6 +128,25 @@ export default function SolveScreen() {
     }
   };
 
+  const handleExecuteMove = (notation: string, isUndo = false) => {
+    const physicsMove = parseMove(notation, isUndo);
+    setActiveMove(physicsMove);
+  };
+
+  const handleMoveComplete = () => {
+    setActiveMove(null);
+    if (playing && step < moves.length - 1) {
+      const delay = playbackMode === "auto" ? stepDelay : 100;
+      setTimeout(() => {
+        const nextStep = step + 1;
+        setStep(nextStep);
+        handleExecuteMove(moves[nextStep]);
+      }, delay);
+    } else if (playing && step >= moves.length - 1) {
+      setPlaying(false);
+    }
+  };
+
   const handlePlay = () => {
     if (step >= moves.length - 1) {
       setStep(-1);
@@ -138,15 +154,30 @@ export default function SolveScreen() {
     }
     startTimeRef.current = Date.now();
     setPlaying(true);
+    const startStep = step >= moves.length - 1 ? 0 : step + 1;
+    setStep(startStep);
+    if (moves.length > 0) {
+      handleExecuteMove(moves[startStep]);
+    }
   };
+
   const handlePause = () => setPlaying(false);
-  const handlePrev = () => {
-    setPlaying(false);
-    setStep((s) => Math.max(-1, s - 1));
-  };
+
   const handleNext = () => {
     setPlaying(false);
-    setStep((s) => Math.min(moves.length - 1, s + 1));
+    if (step < moves.length - 1) {
+      const nextStep = step + 1;
+      setStep(nextStep);
+      handleExecuteMove(moves[nextStep]);
+    }
+  };
+
+  const handlePrev = () => {
+    setPlaying(false);
+    if (step >= 0) {
+      handleExecuteMove(moves[step], true);
+      setStep((s) => s - 1);
+    }
   };
 
   const pct =
@@ -156,7 +187,15 @@ export default function SolveScreen() {
   const elapsed = `${Math.floor(ticks / 10)}.${ticks % 10}s`;
   const solved = moves.length > 0 && step >= moves.length - 1;
 
-  // ── auto-save when solve animation completes ─────────────────────────────
+  const status = solved
+    ? "SOLVED"
+    : playing
+      ? "SOLVING"
+      : moves.length > 0
+        ? "SCRAMBLED"
+        : "READY";
+
+  // ── Auto-save ────────────────────────────────────────────────────
   useEffect(() => {
     if (!solved || savedRef.current || !scramble) return;
     savedRef.current = true;
@@ -168,36 +207,349 @@ export default function SolveScreen() {
       solution: moves as any,
       moveCount: moves.length,
       solveTimeMs,
-    }).catch(() => {}); // best-effort, no UI error needed
+    }).catch(() => {});
   }, [solved, scramble, moves]);
 
+  // ── Subcomponents ─────────────────────────────────────────────────
+
+  const StatsRow = () => (
+    <View style={s.statsRow}>
+      <View style={s.statBox}>
+        <Text style={s.statVal}>
+          {moves.length > 0 ? String(moves.length) : "0"}
+        </Text>
+        <Text style={s.statLbl}>MOVES</Text>
+      </View>
+      <View style={s.statBox}>
+        <Text style={s.statVal}>
+          {moves.length > 0 && step >= 0
+            ? `${step + 1}/${moves.length}`
+            : "0/0"}
+        </Text>
+        <Text style={s.statLbl}>STEP</Text>
+      </View>
+      <View
+        style={[
+          s.statBox,
+          {
+            backgroundColor:
+              status === "SOLVED"
+                ? GREEN
+                : status === "SOLVING"
+                  ? BLUE
+                  : CARD,
+          },
+        ]}
+      >
+        <Text
+          style={[
+            s.statVal,
+            { fontSize: 13 },
+            (status === "SOLVED" || status === "SOLVING") && { color: "#fff" },
+          ]}
+        >
+          {status}
+        </Text>
+        <Text
+          style={[
+            s.statLbl,
+            (status === "SOLVED" || status === "SOLVING") && {
+              color: "rgba(255,255,255,0.7)",
+            },
+          ]}
+        >
+          STATUS
+        </Text>
+      </View>
+    </View>
+  );
+
+  const CurrentMoveDisplay = () => (
+    <View style={s.section}>
+      <Text style={s.sectionLabel}>CURRENT MOVE</Text>
+      <Text style={[s.monoText, { color: MUTED }]}>
+        {playing && step >= 0 && step < moves.length
+          ? moves[step]
+          : moves.length > 0 && step >= 0
+            ? moves[step]
+            : "Press Scramble to begin..."}
+      </Text>
+    </View>
+  );
+
+  const PlaybackControls = () => (
+    <View style={s.section}>
+      <Text style={s.sectionLabel}>PLAYBACK CONTROLS</Text>
+
+      {/* Mode Toggle */}
+      <View style={s.modeRow}>
+        <Text style={s.modeLabel}>Mode</Text>
+        <View style={s.modeToggle}>
+          <Pressable
+            style={[
+              s.modePill,
+              playbackMode === "auto" && s.modePillActive,
+            ]}
+            onPress={() => setPlaybackMode("auto")}
+          >
+            <Text
+              style={[
+                s.modePillTxt,
+                playbackMode === "auto" && s.modePillTxtActive,
+              ]}
+            >
+              Auto
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[
+              s.modePill,
+              playbackMode === "manual" && s.modePillActive,
+            ]}
+            onPress={() => setPlaybackMode("manual")}
+          >
+            <Text
+              style={[
+                s.modePillTxt,
+                playbackMode === "manual" && s.modePillTxtActive,
+              ]}
+            >
+              Manual
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Step Delay (auto only) */}
+      {playbackMode === "auto" && (
+        <View style={s.delayRow}>
+          <Text style={s.delayLabel}>Step Delay</Text>
+          <Text style={s.delayValue}>{stepDelay} ms</Text>
+        </View>
+      )}
+      {playbackMode === "auto" && Platform.OS === "web" && (
+        <View style={s.sliderWrap}>
+          <input
+            type="range"
+            min={100}
+            max={2500}
+            step={100}
+            value={stepDelay}
+            onChange={(e: any) => setStepDelay(Number(e.target.value))}
+            style={{
+              width: "100%",
+              accentColor: BLUE,
+              height: 4,
+              cursor: "pointer",
+            }}
+          />
+          <View style={s.sliderLabels}>
+            <Text style={s.sliderLblTxt}>100 ms — Fast</Text>
+            <Text style={s.sliderLblTxt}>Slow — 2500 ms</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Prev / Play / Next */}
+      <View style={s.transportRow}>
+        <Pressable
+          style={[s.transportBtn, step < 0 && s.transportBtnDisabled]}
+          onPress={handlePrev}
+          disabled={step < 0}
+        >
+          <Text style={s.transportIcon}>←</Text>
+          <Text style={s.transportTxt}>Prev</Text>
+        </Pressable>
+        <Pressable
+          style={[s.transportBtn, s.playBtn]}
+          onPress={playing ? handlePause : handlePlay}
+          disabled={moves.length === 0}
+        >
+          {solving ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={s.playBtnTxt}>
+              {playing ? "⏸ Pause" : "▶ Play"}
+            </Text>
+          )}
+        </Pressable>
+        <Pressable
+          style={[
+            s.transportBtn,
+            step >= moves.length - 1 && s.transportBtnDisabled,
+          ]}
+          onPress={handleNext}
+          disabled={step >= moves.length - 1}
+        >
+          <Text style={s.transportTxt}>Next</Text>
+          <Text style={s.transportIcon}>→</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  const AlgorithmSequence = () => {
+    if (moves.length === 0) return null;
+    return (
+      <View style={s.section}>
+        <Text style={s.sectionLabel}>ALGORITHM SEQUENCE</Text>
+        <View style={s.chips}>
+          {moves.map((m, i) => (
+            <Pressable
+              key={i}
+              onPress={() => {
+                setPlaying(false);
+                if (i > step) {
+                  for (let j = step + 1; j <= i; j++) {
+                    setTimeout(() => handleExecuteMove(moves[j]), (j - step - 1) * 100);
+                  }
+                } else if (i < step) {
+                  for (let j = step; j > i; j--) {
+                    setTimeout(() => handleExecuteMove(moves[j], true), (step - j) * 100);
+                  }
+                }
+                setStep(i);
+              }}
+              style={[
+                s.chip,
+                i === step && s.chipActive,
+                i < step && s.chipDone,
+              ]}
+            >
+              <Text
+                style={[s.chipTxt, i === step && s.chipActiveTxt]}
+              >
+                {m}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const MoveNotationGuide = () => (
+    <View style={s.section}>
+      <View style={s.notationHeader}>
+        <Text style={s.sectionLabel}>MOVE NOTATION GUIDE</Text>
+      </View>
+      <View style={s.notationGrid}>
+        {MOVE_NOTATION.map((n) => (
+          <View key={n.face} style={s.notationRow}>
+            <View style={s.notationCell}>
+              <View style={[s.faceDot, { backgroundColor: n.color }]} />
+              <Text style={s.notationFace}>{n.cw}</Text>
+              <Text style={s.notationDesc}>{n.label}</Text>
+              <Text style={s.notationDir}>Clockwise ↻</Text>
+            </View>
+            <View style={s.notationCell}>
+              <View style={[s.faceDot, { backgroundColor: n.color }]} />
+              <Text style={s.notationFace}>{n.ccw}</Text>
+              <Text style={s.notationDesc}>{n.label}</Text>
+              <Text style={s.notationDir}>Counter CW ↺</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+
+  const ActionButtons = () => (
+    <View style={s.actionRow}>
+      <Pressable style={s.scrambleBtn} onPress={handleNewScramble}>
+        <Text style={s.scrambleBtnTxt}>Scramble</Text>
+      </Pressable>
+      <Pressable
+        style={s.solveBtn}
+        onPress={handleSolve}
+        disabled={solving}
+      >
+        {solving ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={s.solveBtnTxt}>Solve</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+
+  // ── WIDE (Web) Layout ────────────────────────────────────────────
+  if (isWide) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <View style={s.wideContainer}>
+          {/* LEFT: 3D Cube */}
+          <View style={s.cubePanel}>
+            <Cube3D
+              height={Math.min(windowWidth * 0.55, 650)}
+              currentMove={activeMove}
+              onMoveComplete={handleMoveComplete}
+              animationSpeed={3.0}
+            />
+            <View style={s.cubeHints}>
+              <View style={s.hintItem}>
+                <View style={s.hintDot} />
+                <Text style={s.hintTxt}>Drag to rotate</Text>
+              </View>
+              <View style={s.hintItem}>
+                <View style={s.hintDot} />
+                <Text style={s.hintTxt}>Scroll to zoom</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* RIGHT: Controls Panel */}
+          <View style={s.controlPanel}>
+            <ScrollView
+              contentContainerStyle={s.controlScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Header */}
+              <View style={s.panelHeader}>
+                <Text style={s.panelTitle}>3D Solver</Text>
+                <Text style={s.panelSubtitle}>
+                  Step-by-step interactive visualization
+                </Text>
+              </View>
+
+              <StatsRow />
+              <CurrentMoveDisplay />
+              <PlaybackControls />
+              <AlgorithmSequence />
+              <MoveNotationGuide />
+              <ActionButtons />
+            </ScrollView>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── NARROW (Mobile) Layout ───────────────────────────────────────
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content} bounces={false}>
+    <SafeAreaView style={s.safe}>
+      <ScrollView contentContainerStyle={s.content} bounces={false}>
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>3D Solver</Text>
-          <Text style={styles.subtitle}>
-            Kociemba Two-Phase Algorithm · ≤20 Moves
+        <View style={s.header}>
+          <Text style={s.title}>3D Solver</Text>
+          <Text style={s.subtitle}>
+            Step-by-step interactive visualization
           </Text>
         </View>
 
-        {/* Cube card */}
-        <View style={styles.cubeCard}>
+        {/* Cube Card */}
+        <View style={s.cubeCard}>
           <Cube3D
             height={260}
-            cubeState={
-              cubeSnapshots.length > 0
-                ? cubeSnapshots[Math.min(step + 1, cubeSnapshots.length - 1)]
-                : undefined
-            }
-            autoRotate={!playing}
+            currentMove={activeMove}
+            onMoveComplete={handleMoveComplete}
+            animationSpeed={3.0}
           />
-          <View style={styles.cubeFooter}>
-            <View style={styles.badgeRow}>
+          <View style={s.cubeFooter}>
+            <View style={s.badgeRow}>
               <View
                 style={[
-                  styles.dot,
+                  s.dot,
                   {
                     backgroundColor: solved
                       ? GREEN
@@ -207,185 +559,99 @@ export default function SolveScreen() {
                   },
                 ]}
               />
-              <Text style={styles.badgeText}>
+              <Text style={s.badgeText}>
                 {solved
-                  ? "SOLVED ✓"
+                  ? "SOLVED"
                   : moves.length > 0
                     ? `${moves.length} MOVES`
                     : "SOLVED STATE"}
               </Text>
-              {fromScan && !solved && (
-                <View style={styles.scanBadge}>
-                  <Text style={styles.scanBadgeTxt}>📷 SCAN</Text>
-                </View>
-              )}
             </View>
             {moves.length > 0 && step >= 0 && (
-              <Text style={styles.stepText}>
+              <Text style={s.stepText}>
                 {step + 1} / {moves.length}
               </Text>
             )}
           </View>
           {moves.length > 0 && (
-            <View style={styles.progressBar}>
+            <View style={s.progressBar}>
               <View
-                style={[styles.progressFill, { width: `${pct}%` as any }]}
+                style={[s.progressFill, { width: `${pct}%` as any }]}
               />
             </View>
           )}
         </View>
 
-        {/* Stats */}
-        <View style={styles.row3}>
-          {[
-            {
-              label: "Moves",
-              val: moves.length > 0 ? String(moves.length) : "--",
-            },
-            { label: "Elapsed", val: ticks > 0 ? elapsed : "--" },
-            { label: "Progress", val: pct > 0 ? `${pct}%` : "--" },
-          ].map((s) => (
-            <View key={s.label} style={styles.statBox}>
-              <Text style={styles.statVal}>{s.val}</Text>
-              <Text style={styles.statLbl}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Scramble / source label */}
-        <View style={styles.card}>
-          <Text style={styles.cardLbl}>{fromScan ? "SOURCE" : "SCRAMBLE"}</Text>
-          <Text style={styles.monoText}>
-            {scramble || "— tap 'New Scramble' to begin"}
-          </Text>
-        </View>
-
-        {/* Controls */}
-        <View style={styles.controls}>
-          <Pressable
-            style={styles.ctrlBtn}
-            onPress={handlePrev}
-            disabled={step < 0}
-          >
-            <Text style={[styles.ctrlIcon, step < 0 && styles.dim]}>⏮</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.ctrlBtn, styles.playBtn]}
-            onPress={playing ? handlePause : handlePlay}
-            disabled={moves.length === 0}
-          >
-            {solving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={[styles.ctrlIcon, { fontSize: 24 }]}>
-                {playing ? "⏸" : "▶"}
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            style={styles.ctrlBtn}
-            onPress={handleNext}
-            disabled={step >= moves.length - 1}
-          >
-            <Text
-              style={[styles.ctrlIcon, step >= moves.length - 1 && styles.dim]}
-            >
-              ⏭
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Move chips */}
-        {moves.length > 0 && (
-          <View style={styles.card}>
-            <Text style={styles.cardLbl}>SOLUTION · {moves.length} MOVES</Text>
-            <View style={styles.chips}>
-              {moves.map((m, i) => (
-                <Pressable
-                  key={i}
-                  onPress={() => {
-                    setPlaying(false);
-                    setStep(i);
-                  }}
-                  style={[
-                    styles.chip,
-                    i === step && styles.chipActive,
-                    i < step && styles.chipDone,
-                  ]}
-                >
-                  <Text
-                    style={[styles.chipTxt, i === step && styles.chipActiveTxt]}
-                  >
-                    {m}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Face Reference */}
-        <View style={styles.card}>
-          <Text style={styles.cardLbl}>FACE REFERENCE</Text>
-          <View style={styles.faceRef}>
-            <View style={styles.faceRefCol}>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>U</Text> = White (Top)
-              </Text>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>F</Text> = Green (Front)
-              </Text>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>R</Text> = Red (Right)
-              </Text>
-            </View>
-            <View style={styles.faceRefCol}>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>D</Text> = Yellow (Bottom)
-              </Text>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>B</Text> = Blue (Back)
-              </Text>
-              <Text style={styles.faceRefItem}>
-                <Text style={styles.faceColor}>L</Text> = Orange (Left)
-              </Text>
-            </View>
-          </View>
-          <Text style={styles.moveNote}>
-            R = clockwise · R' = counter-clockwise · R2 = 180°
-          </Text>
-        </View>
-
-        {/* Action row */}
-        <View style={styles.row2}>
-          <Pressable style={styles.actionBtn} onPress={handleNewScramble}>
-            <Text style={styles.actionTxt}>New Scramble</Text>
-          </Pressable>
-          <Pressable
-            style={[styles.actionBtn, styles.solveBtn]}
-            onPress={handleSolve}
-            disabled={solving}
-          >
-            {solving ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.actionTxt}>🧩 Solve It</Text>
-            )}
-          </Pressable>
-        </View>
+        <StatsRow />
+        <CurrentMoveDisplay />
+        <PlaybackControls />
+        <AlgorithmSequence />
+        <MoveNotationGuide />
+        <ActionButtons />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+// ── Styles ───────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   content: { padding: 20, paddingBottom: 48 },
 
+  // ── Wide Layout ──────────────────────────────────
+  wideContainer: {
+    flex: 1,
+    flexDirection: "row",
+  },
+  cubePanel: {
+    flex: 1,
+    backgroundColor: BG,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  cubeHints: {
+    flexDirection: "row",
+    gap: 24,
+    marginTop: 16,
+  },
+  hintItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  hintDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: MUTED,
+  },
+  hintTxt: { fontSize: 12, color: MUTED },
+  controlPanel: {
+    width: 380,
+    backgroundColor: CARD,
+    borderLeftWidth: 1,
+    borderLeftColor: BORDER,
+  },
+  controlScroll: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+  panelHeader: { marginBottom: 18 },
+  panelTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: TEXT,
+    marginBottom: 4,
+  },
+  panelSubtitle: { fontSize: 12, color: MUTED },
+
+  // ── Mobile Header ────────────────────────────────
   header: { marginBottom: 18 },
   title: { fontSize: 28, fontWeight: "700", color: TEXT, marginBottom: 4 },
   subtitle: { fontSize: 13, color: MUTED },
 
+  // ── Cube Card (mobile) ───────────────────────────
   cubeCard: {
     borderRadius: 20,
     backgroundColor: CARD,
@@ -415,28 +681,41 @@ const styles = StyleSheet.create({
   progressBar: { height: 3, backgroundColor: BORDER },
   progressFill: { height: 3, backgroundColor: BLUE },
 
-  row3: { flexDirection: "row", gap: 10, marginBottom: 14 },
+  // ── Stats Row ───────────────────────────────────
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 14,
+  },
   statBox: {
     flex: 1,
+    backgroundColor: CARD,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: "center",
+  },
+  statVal: { fontSize: 18, fontWeight: "700", color: TEXT },
+  statLbl: {
+    fontSize: 10,
+    color: MUTED,
+    marginTop: 2,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+
+  // ── Section (generic card) ──────────────────────
+  section: {
     backgroundColor: CARD,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
     padding: 14,
-    alignItems: "center",
-  },
-  statVal: { fontSize: 20, fontWeight: "700", color: TEXT },
-  statLbl: { fontSize: 11, color: MUTED, marginTop: 2, letterSpacing: 0.5 },
-
-  card: {
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 16,
     marginBottom: 14,
   },
-  cardLbl: {
+  sectionLabel: {
     fontSize: 11,
     fontWeight: "700",
     color: MUTED,
@@ -444,58 +723,98 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   monoText: {
-    fontSize: 14,
+    fontSize: 13,
     color: TEXT,
     fontFamily: "SpaceMono",
-    lineHeight: 22,
+    lineHeight: 20,
   },
 
-  controls: {
+  // ── Mode Toggle ─────────────────────────────────
+  modeRow: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 20,
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  ctrlBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: CARD,
+  modeLabel: { fontSize: 13, color: TEXT },
+  modeToggle: {
+    flexDirection: "row",
+    backgroundColor: CARD_ALT,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: BORDER,
+    overflow: "hidden",
+  },
+  modePill: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  modePillActive: {
+    backgroundColor: BLUE,
+  },
+  modePillTxt: { fontSize: 12, fontWeight: "600", color: MUTED },
+  modePillTxtActive: { color: "#fff" },
+
+  // ── Step Delay ──────────────────────────────────
+  delayRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  delayLabel: { fontSize: 13, color: TEXT },
+  delayValue: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: BLUE,
+    backgroundColor: CARD_ALT,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  sliderWrap: { marginBottom: 12 },
+  sliderLabels: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 4,
+  },
+  sliderLblTxt: { fontSize: 10, color: MUTED },
+
+  // ── Transport Controls ──────────────────────────
+  transportRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  transportBtn: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 4,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: CARD_ALT,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
+  transportBtnDisabled: { opacity: 0.35 },
+  transportIcon: { fontSize: 14, color: TEXT },
+  transportTxt: { fontSize: 13, fontWeight: "600", color: TEXT },
   playBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    flex: 1.5,
     backgroundColor: BLUE,
     borderColor: BLUE,
   },
-  ctrlIcon: { fontSize: 20, color: TEXT },
-  dim: { opacity: 0.25 },
-  scanBadge: {
-    backgroundColor: "#0046AD",
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginLeft: 6,
-  },
-  scanBadgeTxt: {
-    fontSize: 9,
-    fontWeight: "700",
-    color: "#fff",
-    letterSpacing: 0.5,
-  },
+  playBtnTxt: { fontSize: 14, fontWeight: "700", color: "#fff" },
 
+  // ── Algorithm Chips ─────────────────────────────
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
     paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 7,
-    backgroundColor: "#1C2128",
+    backgroundColor: CARD_ALT,
     borderWidth: 1,
     borderColor: BORDER,
   },
@@ -504,22 +823,66 @@ const styles = StyleSheet.create({
   chipTxt: { fontSize: 12, color: TEXT, fontFamily: "SpaceMono" },
   chipActiveTxt: { color: "#fff", fontWeight: "700" },
 
-  row2: { flexDirection: "row", gap: 12 },
-  actionBtn: {
+  // ── Move Notation Guide ─────────────────────────
+  notationHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  notationGrid: { gap: 6 },
+  notationRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  notationCell: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: CARD_ALT,
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  faceDot: { width: 10, height: 10, borderRadius: 5 },
+  notationFace: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: TEXT,
+    fontFamily: "SpaceMono",
+    width: 22,
+  },
+  notationDesc: { fontSize: 11, color: TEXT, flex: 1 },
+  notationDir: { fontSize: 10, color: MUTED },
+
+  // ── Action Buttons ──────────────────────────────
+  actionRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  scrambleBtn: {
     flex: 1,
     backgroundColor: CARD,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
-    padding: 14,
+    paddingVertical: 14,
     alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
   },
-  solveBtn: { backgroundColor: BLUE, borderColor: BLUE },
-  actionTxt: { fontSize: 14, fontWeight: "600", color: TEXT },
-
-  faceRef: { flexDirection: "row", gap: 20, marginBottom: 8 },
-  faceRefCol: { flex: 1, gap: 4 },
-  faceRefItem: { fontSize: 12, color: TEXT, lineHeight: 18 },
-  faceColor: { fontSize: 12 },
-  moveNote: { fontSize: 10, color: MUTED, marginTop: 6, fontStyle: "italic" },
+  scrambleBtnTxt: { fontSize: 14, fontWeight: "600", color: TEXT },
+  solveBtn: {
+    flex: 1,
+    backgroundColor: GREEN,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 6,
+  },
+  solveBtnTxt: { fontSize: 14, fontWeight: "700", color: "#fff" },
 });

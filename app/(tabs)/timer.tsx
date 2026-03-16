@@ -3,12 +3,7 @@ import { StyleSheet, Pressable, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { generateScramble } from "@/lib/solver";
 
-const BG = "#0D1117",
-  CARD = "#161B22",
-  BORDER = "#30363D";
-const TEXT = "#E6EDF3",
-  MUTED = "#8B949E",
-  GREEN = "#009B48";
+import { BG, CARD, CARD_ALT, BORDER, TEXT, MUTED, GREEN } from "@/lib/theme";
 
 export default function TimerScreen() {
   const [scramble, setScramble] = useState(() => generateScramble(20));

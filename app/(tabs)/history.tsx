@@ -12,12 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { getHistory } from "@/lib/api";
 import type { SolveRecord } from "@/types/cube";
 
-const BG = "#0D1117",
-  CARD = "#161B22",
-  BORDER = "#30363D";
-const TEXT = "#E6EDF3",
-  MUTED = "#8B949E",
-  GREEN = "#009B48";
+import { BG, CARD, BORDER, TEXT, MUTED, GREEN, ORANGE } from "@/lib/theme";
 
 function formatTime(ms?: number): string {
   if (!ms) return "--";
@@ -75,7 +70,9 @@ export default function HistoryScreen() {
         <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
       ) : error ? (
         <View style={styles.errorBox}>
-          <Text style={styles.errorEmoji}>⚠️</Text>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: ORANGE, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>!</Text>
+          </View>
           <Text style={styles.errorTxt}>{error}</Text>
           <Pressable style={styles.retryBtn} onPress={() => load()}>
             <Text style={styles.retryTxt}>Retry</Text>
@@ -119,7 +116,9 @@ export default function HistoryScreen() {
           )}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyEmoji}>📊</Text>
+              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: MUTED }}>#</Text>
+              </View>
               <Text style={styles.emptyTxt}>
                 No solves yet.{"\n"}Scan a cube to get started!
               </Text>
