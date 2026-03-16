@@ -58,7 +58,7 @@ export const SOLVED_STATE: CubeState = {
 // ============================================
 
 export const API_BASE_URL = __DEV__
-  ? 'http://172.22.76.144:3001/api'
+  ? 'http://172.22.78.165:3001/api'
   : 'https://your-backend.onrender.com/api';
 
 // ============================================

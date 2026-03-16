@@ -1,6 +1,7 @@
 import { StyleSheet, Pressable } from "react-native";
 import { Link } from "expo-router";
 import { Text, View } from "@/components/Themed";
+import React from "react";
 
 export default function HomeScreen() {
   return (

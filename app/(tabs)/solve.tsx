@@ -69,7 +69,7 @@ export default function SolveScreen() {
     if (isSolved) return;
     setSolving(true);
     setFromScan(true);
-    setScramble("📷 From camera / manual scan");
+    setScramble("(Scanned cube)");
     setTimeout(() => {
       try {
         setMoves(solveCubeState(cubeState));
@@ -102,28 +102,13 @@ export default function SolveScreen() {
     }
     setSolving(true);
     try {
-      // Use backend API for scramble solving (faster, more reliable)
-      const response = await solveCube(scramble);
-      setMoves(response.moves);
+      // For scramble solving, use local solver (backend expects cube state, not scramble)
+      setMoves(solveFromScramble(scramble));
       setStep(-1);
       setTicks(0);
       setPlaying(false);
     } catch (e) {
-      console.error("[solve] backend error, falling back to local:", e);
-      // Fallback to local solver if backend fails
-      setTimeout(() => {
-        try {
-          setMoves(solveFromScramble(scramble));
-          setStep(-1);
-          setTicks(0);
-          setPlaying(false);
-        } catch (localErr) {
-          console.error("[solve] local solver also failed:", localErr);
-        } finally {
-          setSolving(false);
-        }
-      }, 50);
-      return;
+      console.error("[solve] local solver failed:", e);
     } finally {
       setSolving(false);
     }
@@ -474,4 +459,10 @@ const styles = StyleSheet.create({
   },
   solveBtn: { backgroundColor: BLUE, borderColor: BLUE },
   actionTxt: { fontSize: 14, fontWeight: "600", color: TEXT },
+
+  faceRef: { flexDirection: "row", gap: 20, marginBottom: 8 },
+  faceRefCol: { flex: 1, gap: 4 },
+  faceRefItem: { fontSize: 12, color: TEXT, lineHeight: 18 },
+  faceColor: { fontSize: 12 },
+  moveNote: { fontSize: 10, color: MUTED, marginTop: 6, fontStyle: "italic" },
 });
