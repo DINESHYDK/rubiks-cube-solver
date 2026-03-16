@@ -36,6 +36,15 @@ const ALL_COLORS: CubeColor[] = [
   "blue",
 ];
 
+const SCAN_INSTRUCTIONS: Record<string, string> = {
+  U: "Hold the White center facing you, Green on top.",
+  R: "Rotate the whole cube left (Orange face to you).",
+  F: "Rotate the whole cube left again (Green face to you).",
+  D: "Rotate the whole cube UP (Yellow face to you).",
+  L: "Rotate the whole cube UP again (Blue face to you).",
+  B: "Rotate the whole cube UP one last time (Red face to you)."
+};
+
 type Phase = "idle" | "camera" | "review" | "complete";
 type Mode = "camera" | "manual";
 
@@ -193,12 +202,8 @@ export default function ScanScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Cube Scanner</Text>
           <Text style={styles.subtitle}>
-            {phase === "idle" &&
-              (mode === "manual"
-                ? "Set each sticker color manually"
-                : "Scan each face one at a time")}
-            {phase === "camera" &&
-              `Align ${FACE_LABELS[currentFace]} with the grid`}
+            {phase === "idle" && (mode === "manual" ? "Set each sticker color manually" : "Scan each face one at a time")}
+            {phase === "camera" && SCAN_INSTRUCTIONS[currentFace as string]}
             {phase === "review" && "Tap any square to correct its color"}
             {phase === "complete" && "All 6 faces scanned — ready to solve!"}
           </Text>

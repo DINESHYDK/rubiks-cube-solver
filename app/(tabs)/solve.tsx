@@ -21,6 +21,7 @@ import {
 import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
+import { Alert } from 'react-native';
 import { saveSolve } from "@/lib/api";
 import {
   BG, CARD, CARD_ALT, BORDER,
@@ -87,6 +88,11 @@ export default function SolveScreen() {
         setPlaying(false);
       } catch (e) {
         console.error(e);
+        Alert.alert(
+          "Unsolvable Cube", 
+          "The scanned colors don't form a valid Rubik's Cube. Please check your lighting and scan again.",
+          [{ text: "Go Back", onPress: () => resetCube() }]
+        );
       } finally {
         setSolving(false);
       }
