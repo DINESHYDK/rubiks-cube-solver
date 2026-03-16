@@ -110,14 +110,22 @@ export default function SolveScreen() {
     }
     setSolving(true);
     try {
-      const sol = solveFromScramble(scramble);
+      let sol: string[];
+      if (fromScan) {
+        // For scanned cubes, solve directly from cubeState
+        sol = solveCubeState(cubeState);
+        setCubeSnapshots([cubeState]);
+      } else {
+        // For scrambles, use scramble string
+        sol = solveFromScramble(scramble);
+        setCubeSnapshots(getIntermediateStates(scramble, sol));
+      }
       setMoves(sol);
-      setCubeSnapshots(getIntermediateStates(scramble, sol));
       setStep(-1);
       setTicks(0);
       setPlaying(false);
     } catch (e) {
-      console.error("[solve] local solver failed:", e);
+      console.error("[solve] failed:", e);
     } finally {
       setSolving(false);
     }
