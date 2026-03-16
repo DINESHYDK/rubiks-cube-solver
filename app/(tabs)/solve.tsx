@@ -19,7 +19,7 @@ import {
 import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
-import { saveSolve, solveCube } from "@/lib/api";
+import { saveSolve } from "@/lib/api";
 
 const BG = "#0D1117",
   CARD = "#161B22",
@@ -316,10 +316,42 @@ export default function SolveScreen() {
           </View>
         )}
 
+        {/* Face Reference */}
+        <View style={styles.card}>
+          <Text style={styles.cardLbl}>FACE REFERENCE</Text>
+          <View style={styles.faceRef}>
+            <View style={styles.faceRefCol}>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>U</Text> = White (Top)
+              </Text>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>F</Text> = Green (Front)
+              </Text>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>R</Text> = Red (Right)
+              </Text>
+            </View>
+            <View style={styles.faceRefCol}>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>D</Text> = Yellow (Bottom)
+              </Text>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>B</Text> = Blue (Back)
+              </Text>
+              <Text style={styles.faceRefItem}>
+                <Text style={styles.faceColor}>L</Text> = Orange (Left)
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.moveNote}>
+            R = clockwise · R' = counter-clockwise · R2 = 180°
+          </Text>
+        </View>
+
         {/* Action row */}
         <View style={styles.row2}>
           <Pressable style={styles.actionBtn} onPress={handleNewScramble}>
-            <Text style={styles.actionTxt}>� New Scramble</Text>
+            <Text style={styles.actionTxt}>New Scramble</Text>
           </Pressable>
           <Pressable
             style={[styles.actionBtn, styles.solveBtn]}
