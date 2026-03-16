@@ -1,8 +1,17 @@
-import { useState, useRef } from 'react';
-import { StyleSheet, Pressable } from 'react-native';
-import { Text, View } from '@/components/Themed';
+import React, { useState, useRef } from "react";
+import { StyleSheet, Pressable, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { generateScramble } from "@/lib/solver";
+
+const BG = "#0D1117",
+  CARD = "#161B22",
+  BORDER = "#30363D";
+const TEXT = "#E6EDF3",
+  MUTED = "#8B949E",
+  GREEN = "#009B48";
 
 export default function TimerScreen() {
+  const [scramble, setScramble] = useState(() => generateScramble(20));
   const [time, setTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -14,13 +23,15 @@ export default function TimerScreen() {
     const secs = seconds % 60;
 
     if (minutes > 0) {
-      return `${minutes}:${secs.toString().padStart(2, '0')}.${Math.floor(millis / 10)
+      return `${minutes}:${secs.toString().padStart(2, "0")}.${Math.floor(
+        millis / 10,
+      )
         .toString()
-        .padStart(2, '0')}`;
+        .padStart(2, "0")}`;
     }
     return `${secs}.${Math.floor(millis / 10)
       .toString()
-      .padStart(2, '0')}`;
+      .padStart(2, "0")}`;
   };
 
   const toggleTimer = () => {
@@ -44,124 +55,159 @@ export default function TimerScreen() {
     setTime(0);
   };
 
+  const newScramble = () => {
+    resetTimer();
+    setScramble(generateScramble(20));
+  };
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.scrambleLabel}>Scramble</Text>
-      <Text style={styles.scramble}>R U R' F2 D' L B2 U' R D2 F' L2 U B R2 D F2 L' U2 R'</Text>
-
-      <Pressable style={styles.timerArea} onPress={toggleTimer}>
-        <Text style={styles.time}>{formatTime(time)}</Text>
-        <Text style={styles.tapHint}>
-          {isRunning ? 'Tap to stop' : time > 0 ? 'Tap to resume' : 'Tap to start'}
-        </Text>
-      </Pressable>
-
-      {time > 0 && !isRunning && (
-        <View style={styles.actions}>
-          <Pressable style={styles.resetButton} onPress={resetTimer}>
-            <Text style={styles.resetText}>Reset</Text>
-          </Pressable>
-          <Pressable style={styles.saveButton}>
-            <Text style={styles.saveText}>Save</Text>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.container}>
+        <View style={styles.scrambleCard}>
+          <Text style={styles.scrambleLabel}>SCRAMBLE</Text>
+          <Text style={styles.scramble}>{scramble}</Text>
+          <Pressable style={styles.newScrambleBtn} onPress={newScramble}>
+            <Text style={styles.newScrambleTxt}>New Scramble</Text>
           </Pressable>
         </View>
-      )}
 
-      <View style={styles.stats}>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Best</Text>
-          <Text style={styles.statValue}>--</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Ao5</Text>
-          <Text style={styles.statValue}>--</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Ao12</Text>
-          <Text style={styles.statValue}>--</Text>
+        <Pressable style={styles.timerArea} onPress={toggleTimer}>
+          <Text style={styles.time}>{formatTime(time)}</Text>
+          <Text style={styles.tapHint}>
+            {isRunning
+              ? "Tap to stop"
+              : time > 0
+                ? "Tap to resume"
+                : "Tap to start"}
+          </Text>
+        </Pressable>
+
+        {time > 0 && !isRunning && (
+          <View style={styles.actions}>
+            <Pressable style={styles.resetButton} onPress={resetTimer}>
+              <Text style={styles.resetText}>Reset</Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={styles.stats}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Best</Text>
+            <Text style={styles.statValue}>--</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Ao5</Text>
+            <Text style={styles.statValue}>--</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>Ao12</Text>
+            <Text style={styles.statValue}>--</Text>
+          </View>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG },
   container: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: 20,
+    backgroundColor: BG,
+  },
+  scrambleCard: {
+    backgroundColor: CARD,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 16,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 36,
   },
   scrambleLabel: {
-    fontSize: 12,
-    opacity: 0.5,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
+    fontSize: 11,
+    fontWeight: "700",
+    color: MUTED,
+    letterSpacing: 1,
     marginBottom: 8,
   },
   scramble: {
     fontSize: 14,
-    textAlign: 'center',
-    opacity: 0.7,
-    marginBottom: 40,
-    paddingHorizontal: 20,
+    textAlign: "center",
+    color: TEXT,
+    fontFamily: "SpaceMono",
+    lineHeight: 22,
+    marginBottom: 12,
   },
+  newScrambleBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "#1C2128",
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  newScrambleTxt: { fontSize: 12, color: MUTED, fontWeight: "600" },
   timerArea: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 30,
   },
   time: {
-    fontSize: 72,
-    fontWeight: '200',
-    fontVariant: ['tabular-nums'],
+    fontSize: 80,
+    fontWeight: "200",
+    color: TEXT,
+    fontVariant: ["tabular-nums"],
   },
   tapHint: {
     fontSize: 14,
-    opacity: 0.4,
+    color: MUTED,
     marginTop: 8,
   },
   actions: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
     marginBottom: 40,
   },
   resetButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: BORDER,
+    backgroundColor: CARD,
   },
   resetText: {
     fontSize: 16,
-  },
-  saveButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#009B48',
-  },
-  saveText: {
-    fontSize: 16,
-    color: '#fff',
-    fontWeight: '600',
+    color: TEXT,
+    fontWeight: "600",
   },
   stats: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 30,
   },
   statItem: {
-    alignItems: 'center',
+    alignItems: "center",
+    backgroundColor: CARD,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
   },
   statLabel: {
-    fontSize: 12,
-    opacity: 0.5,
-    textTransform: 'uppercase',
+    fontSize: 11,
+    color: MUTED,
+    textTransform: "uppercase",
     letterSpacing: 1,
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: "700",
+    color: TEXT,
   },
 });
