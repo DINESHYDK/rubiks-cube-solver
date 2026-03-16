@@ -22,17 +22,40 @@ function detectWeb(base64: string): Promise<CubeColor[]> {
       const sy = (img.height - src) / 2;
       ctx.drawImage(img, sx, sy, src, src, 0, 0, SIZE, SIZE);
       const colors: CubeColor[] = [];
+      const SAMPLE_SIZE = 10; // We will sample a 10x10 block instead of 1 pixel
+
       for (let row = 0; row < 3; row++) {
         for (let col = 0; col < 3; col++) {
-          const px = ctx.getImageData(
-            col * CELL + CELL / 2,
-            row * CELL + CELL / 2,
-            1,
-            1,
+          const centerX = col * CELL + CELL / 2;
+          const centerY = row * CELL + CELL / 2;
+
+          // Grab the pixel data for the 10x10 area
+          const imgData = ctx.getImageData(
+            centerX - SAMPLE_SIZE / 2,
+            centerY - SAMPLE_SIZE / 2,
+            SAMPLE_SIZE,
+            SAMPLE_SIZE,
           ).data;
-          colors.push(
-            classifyColor(rgbToHsv({ r: px[0], g: px[1], b: px[2] })),
-          );
+
+          let totalR = 0,
+            totalG = 0,
+            totalB = 0;
+          const pixelCount = SAMPLE_SIZE * SAMPLE_SIZE;
+
+          // Loop through the 100 pixels and sum up their RGB values
+          for (let i = 0; i < imgData.length; i += 4) {
+            totalR += imgData[i];
+            totalG += imgData[i + 1];
+            totalB += imgData[i + 2];
+          }
+
+          // Calculate the average
+          const avgR = totalR / pixelCount;
+          const avgG = totalG / pixelCount;
+          const avgB = totalB / pixelCount;
+
+          // Convert the average RGB to HSV and classify it
+          colors.push(classifyColor(rgbToHsv({ r: avgR, g: avgG, b: avgB })));
         }
       }
       resolve(colors);

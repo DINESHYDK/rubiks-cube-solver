@@ -4,6 +4,7 @@ import { Canvas, useFrame } from "@react-three/fiber/native";
 import type { Group } from "three";
 import type { CubeState, CubeColor } from "@/types/cube";
 import { SOLVED_STATE } from "@/lib/constants";
+import { RoundedBox } from "@react-three/drei/native";
 
 // ── Color hex map ─────────────────────────────────────────────────────────────
 const HEX: Record<CubeColor, string> = {
@@ -43,18 +44,22 @@ type Pos = [number, number, number];
 
 function Cubie({ pos, colors }: { pos: Pos; colors: string[] }) {
   return (
-    <mesh position={[pos[0] * 1.05, pos[1] * 1.05, pos[2] * 1.05]}>
-      <boxGeometry args={[0.94, 0.94, 0.94]} />
-      {colors.map((c, i) => (
-        <meshStandardMaterial
-          key={i}
-          attach={`material-${i}`}
-          color={c}
-          roughness={0.35}
-          metalness={0.08}
-        />
-      ))}
-    </mesh>
+    <group position={[pos[0] * 1.02, pos[1] * 1.02, pos[2] * 1.02]}>
+      {/* We use RoundedBox for that premium, physical speed-cube look */}
+      <RoundedBox args={[0.96, 0.96, 0.96]} radius={0.08} smoothness={4}>
+        {colors.map((c, i) => (
+          <meshPhysicalMaterial
+            key={i}
+            attach={`material-${i}`}
+            color={c}
+            roughness={0.15} // Lower roughness = shinier
+            metalness={0.05}
+            clearcoat={1.0} // Gives it that hard-plastic glare
+            clearcoatRoughness={0.1}
+          />
+        ))}
+      </RoundedBox>
+    </group>
   );
 }
 

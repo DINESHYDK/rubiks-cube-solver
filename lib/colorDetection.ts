@@ -1,4 +1,4 @@
-import type { CubeColor, HSVColor, RGBColor } from '@/types/cube';
+import type { CubeColor, HSVColor, RGBColor } from "@/types/cube";
 
 /**
  * Convert RGB to HSV color space.
@@ -55,31 +55,38 @@ const COLOR_RANGES: Record<CubeColor, HSVRange> = {
 };
 
 /**
- * Classify an HSV color into one of the 6 cube colors.
+ * Classify an HSV color into one of the 6 cube colors using the COLOR_RANGES dictionary.
  */
+  // Check each color range
 export function classifyColor(hsv: HSVColor): CubeColor {
   const { h, s, v } = hsv;
 
-  // White: low saturation, high value
-  if (s < 25 && v > 70) return 'white';
+  // 1. Check White first (Low saturation, high brightness)
+  if (s <= COLOR_RANGES.white.sMax && v >= COLOR_RANGES.white.vMin) {
+    return 'white';
+  }
 
-  // Yellow: medium hue, high saturation
-  if (h >= 40 && h < 75 && s > 50) return 'yellow';
+  // 2. Loop through the rest of the dictionary dynamically
+  for (const [colorStr, range] of Object.entries(COLOR_RANGES)) {
+    const color = colorStr as CubeColor;
+    if (color === 'white') continue;
 
-  // Green
-  if (h >= 75 && h < 165 && s > 30) return 'green';
+    if (color === 'red') {
+      // Red is special because Hue wraps around the 360-degree circle (0 and 360 are both red)
+      if (((h >= 0 && h <= 15) || h >= 340) && s >= range.sMin && v >= range.vMin) {
+        return 'red';
+      }
+    } else {
+      // Standard check for all other colors
+      if (h >= range.hMin && h <= range.hMax && s >= range.sMin && v >= range.vMin) {
+        return color;
+      }
+    }
+  }
 
-  // Blue
-  if (h >= 195 && h < 270 && s > 30) return 'blue';
-
-  // Orange
-  if (h >= 15 && h < 40 && s > 50) return 'orange';
-
-  // Red (wraps around 0°/360°)
-  if ((h >= 0 && h < 15) || h >= 340) return 'red';
-
-  // Fallback: closest match by hue
-  return 'red';
+  // 3. Fallback: If lighting is completely terrible, return white 
+  // (Easier for the user to manually correct a white square than a random red one)
+  return 'white';
 }
 
 /**
