@@ -44,7 +44,7 @@ export interface HSVColor {
   v: number; // 0-100
 }
 
-/** A single solve record (stored in DB) */
+/** A single solve record (stored locally via AsyncStorage) */
 export interface SolveRecord {
   id: string;
   scramble: string;
@@ -54,22 +54,19 @@ export interface SolveRecord {
   createdAt: string;
 }
 
-/** API response from /api/solve */
-export interface SolveResponse {
-  moves: Solution;
-  moveCount: number;
+/** User settings stored in AsyncStorage under "settings" */
+export interface Settings {
+  username: string;
+  theme: 'dark' | 'light';
+  autoModeDefault: boolean;
+  stepDelay: number; // ms, 100–2500
 }
 
-/** API response from /api/validate */
-export interface ValidateResponse {
-  valid: boolean;
-  errors: string[];
-}
-
-/** API response from /api/scramble */
-export interface ScrambleResponse {
-  scramble: string;
-  state: string;
+/** Aggregate stats derived from solve history */
+export interface SessionStats {
+  totalSolves: number;
+  ao5: number | null;  // null if < 5 timed solves
+  ao12: number | null; // null if < 12 timed solves
 }
 
 /** Scan progress for camera scanning */

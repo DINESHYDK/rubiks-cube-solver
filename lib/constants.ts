@@ -64,7 +64,8 @@ export const SOLVED_STATE: CubeState = {
 // Dynamically detect the dev server host for API calls
 function getApiBaseUrl(): string {
   if (!__DEV__) {
-    return 'https://your-backend.onrender.com/api';
+    // Replace with your deployed Python backend URL before publishing
+    return 'https://your-cv-backend.onrender.com';
   }
   // In dev, use the Expo dev server host (works over WiFi with Expo Go)
   const debuggerHost =
@@ -73,13 +74,13 @@ function getApiBaseUrl(): string {
     (Constants.manifest as any)?.debuggerHost;
   if (debuggerHost) {
     const host = debuggerHost.split(':')[0]; // strip port
-    return `http://${host}:3001/api`;
+    return `http://${host}:8000`;
   }
   // Fallback for web — guard against SSR where window doesn't exist
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:3001/api`;
+    return `http://${window.location.hostname}:8000`;
   }
-  return 'http://localhost:3001/api';
+  return 'http://localhost:8000';
 }
 
 // Lazy-evaluate so it doesn't crash during module import

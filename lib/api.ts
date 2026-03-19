@@ -1,69 +1,22 @@
-import type { ScrambleResponse, SolveRecord, SolveResponse, ValidateResponse } from '@/types/cube';
 import { API_BASE_URL } from './constants';
+import type { CubeColor } from '@/types/cube';
 
 /**
- * Generic fetch wrapper with error handling.
+ * Send a base64 JPEG to the Python CV backend and get back 9 sticker colors.
+ * Used by detectFromImage.ts — this is the ONLY remaining backend route.
  */
-async function apiFetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
-
-  const response = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options,
+export async function detectColorsFromBase64(base64: string): Promise<CubeColor[]> {
+  const resp = await fetch(`${API_BASE_URL}/api/detect-colors`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64 }),
   });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`API Error ${response.status}: ${errorBody}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`CV backend ${resp.status}: ${text}`);
   }
 
-  return response.json() as Promise<T>;
-}
-
-/**
- * Send cube state to backend, get solution moves.
- */
-export async function solveCube(cubeState: string): Promise<SolveResponse> {
-  return apiFetch<SolveResponse>('/solve', {
-    method: 'POST',
-    body: JSON.stringify({ cubeState }),
-  });
-}
-
-/**
- * Validate a cube state on the backend.
- */
-export async function validateCube(cubeState: string): Promise<ValidateResponse> {
-  return apiFetch<ValidateResponse>('/validate', {
-    method: 'POST',
-    body: JSON.stringify({ cubeState }),
-  });
-}
-
-/**
- * Get a random scramble from the backend.
- */
-export async function getScramble(): Promise<ScrambleResponse> {
-  return apiFetch<ScrambleResponse>('/scramble');
-}
-
-/**
- * Get solve history.
- */
-export async function getHistory(): Promise<SolveRecord[]> {
-  return apiFetch<SolveRecord[]>('/history');
-}
-
-/**
- * Save a solve record.
- */
-export async function saveSolve(
-  record: Omit<SolveRecord, 'id' | 'createdAt'>
-): Promise<{ id: string }> {
-  return apiFetch<{ id: string }>('/history', {
-    method: 'POST',
-    body: JSON.stringify(record),
-  });
+  const data = (await resp.json()) as { colors: CubeColor[] };
+  return data.colors;
 }

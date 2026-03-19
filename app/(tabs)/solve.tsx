@@ -22,7 +22,7 @@ import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
 import { Alert } from 'react-native';
-import { saveSolve } from "@/lib/api";
+import { saveSolve } from "@/lib/storage";
 import {
   BG, CARD, CARD_ALT, BORDER,
   TEXT, MUTED, BLUE, GREEN, RED, ORANGE, YELLOW,

@@ -9,7 +9,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getHistory } from "@/lib/api";
+import { getSolveHistory } from "@/lib/storage";
 import type { SolveRecord } from "@/types/cube";
 
 import { BG, CARD, BORDER, TEXT, MUTED, GREEN, ORANGE } from "@/lib/theme";
@@ -41,10 +41,10 @@ export default function HistoryScreen() {
     else setLoading(true);
     setError("");
     try {
-      const data = await getHistory();
+      const data = await getSolveHistory();
       setRecords(data);
     } catch {
-      setError("Could not load history — is the server running?");
+      setError("Could not load history.");
     } finally {
       setLoading(false);
       setRefreshing(false);

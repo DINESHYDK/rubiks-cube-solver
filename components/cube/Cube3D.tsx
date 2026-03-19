@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, PanResponder } from "react-native";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber/native";
 import * as THREE from "three";
 
 const COLORS = {
@@ -276,7 +276,7 @@ export default function Cube3D({
   return (
     <Cube3DErrorBoundary height={height}>
       <View style={[{ width: width as any, height }, style]} {...panResponder.panHandlers}>
-        <Canvas camera={{ position: [5, 4, 6], fov: 45 }} gl={{ antialias: true, alpha: true }}>
+        <Canvas camera={{ position: [5, 4, 6], fov: 45 }} gl={{ antialias: true }}>
           <Scene
             cubeState={cubeState}
             currentMove={currentMove}
