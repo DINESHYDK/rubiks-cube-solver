@@ -1,17 +1,19 @@
 {
   "expo": {
-    "name": "Rubik's Cube Solver",
+    "name": "CubeIQ",
     "slug": "rubiks-cube-solver",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rubikscubeapp",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#000040",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#000040"
     },
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },
@@ -22,7 +24,12 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.rubikscubesolver"
     },
     "web": {
       "bundler": "metro",
@@ -34,12 +41,19 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Rubik's Cube Solver to access your camera to scan cube faces."
+          "cameraPermission": "Allow CubeIQ to access your camera to scan cube faces."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0ac6af83-c433-43e3-9a25-ce56b1434813"
+      }
     }
   }
 }

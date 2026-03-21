@@ -5,14 +5,21 @@ import {
   View,
   Text,
   Pressable,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+
 import { getSolveHistory } from "@/lib/storage";
+import { useTheme } from "@/lib/theme";
 import type { SolveRecord } from "@/types/cube";
 
-import { BG, CARD, BORDER, TEXT, MUTED, GREEN, ORANGE } from "@/lib/theme";
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatTime(ms?: number): string {
   if (!ms) return "--";
@@ -25,162 +32,238 @@ function formatTime(ms?: number): string {
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
     month: "short",
-    day: "numeric",
-    year: "numeric",
+    day:   "numeric",
+    year:  "numeric",
   });
 }
 
+// ── SolveCard ─────────────────────────────────────────────────────────────────
+
+function SolveCard({
+  item,
+  index,
+}: {
+  item: SolveRecord;
+  index: number;
+}) {
+  const t     = useTheme();
+  const scale   = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const anim    = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  const solution = Array.isArray(item.solution)
+    ? item.solution.join(" ")
+    : String(item.solution ?? "");
+
+  return (
+    <Pressable
+      onPressIn={() => {
+        scale.value   = withTiming(0.97, { duration: 120 });
+        opacity.value = withTiming(0.85, { duration: 120 });
+      }}
+      onPressOut={() => {
+        scale.value   = withTiming(1, { duration: 120 });
+        opacity.value = withTiming(1, { duration: 120 });
+      }}
+    >
+      <Animated.View
+        style={[
+          s.card,
+          { backgroundColor: t.CARD, borderColor: t.BORDER },
+          anim,
+        ]}
+      >
+        {/* Rank circle */}
+        <View style={[s.rankCircle, { backgroundColor: t.CARD_ALT }]}>
+          <Text style={[s.rankTxt, { color: t.MUTED }]}>#{index + 1}</Text>
+        </View>
+
+        {/* Middle: scramble + solution + date */}
+        <View style={s.cardBody}>
+          <Text style={[s.scramble, { color: t.MUTED }]} numberOfLines={1}>
+            {item.scramble}
+          </Text>
+          <Text style={[s.solution, { color: t.MUTED }]} numberOfLines={1}>
+            {solution}
+          </Text>
+          <Text style={[s.cardDate, { color: t.MUTED }]}>
+            {formatDate(item.createdAt)}
+          </Text>
+        </View>
+
+        {/* Right: time + moves */}
+        <View style={s.cardRight}>
+          <Text style={[s.cardTime, { color: t.ACCENT }]}>
+            {formatTime(item.solveTimeMs)}
+          </Text>
+          <Text style={[s.cardMoves, { color: t.MUTED }]}>
+            {item.moveCount} moves
+          </Text>
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// ── EmptyState ────────────────────────────────────────────────────────────────
+
+function EmptyState() {
+  const t      = useTheme();
+  const router = useRouter();
+  const scale   = useSharedValue(1);
+  const opacity = useSharedValue(1);
+  const btnAnim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <View style={s.emptyWrap}>
+      <View style={[s.emptyCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+        <Text style={[s.emptyTitle, { color: t.TEXT }]}>No solves yet</Text>
+        <Text style={[s.emptyDesc,  { color: t.MUTED }]}>
+          Scan a cube to get started
+        </Text>
+        <Pressable
+          onPressIn={() => {
+            scale.value   = withTiming(0.96, { duration: 120 });
+            opacity.value = withTiming(0.82, { duration: 120 });
+          }}
+          onPressOut={() => {
+            scale.value   = withTiming(1, { duration: 120 });
+            opacity.value = withTiming(1, { duration: 120 });
+          }}
+          onPress={() => router.push("/(tabs)/scan")}
+        >
+          <Animated.View
+            style={[s.scanNowBtn, { backgroundColor: t.ACCENT }, btnAnim]}
+          >
+            <Text style={s.scanNowTxt}>Scan Now</Text>
+          </Animated.View>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// ── HistoryScreen ─────────────────────────────────────────────────────────────
+
 export default function HistoryScreen() {
-  const [records, setRecords] = useState<SolveRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const t = useTheme();
+  const [records,    setRecords]    = useState<SolveRecord[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-    try {
-      const data = await getSolveHistory();
-      setRecords(data);
-    } catch {
-      setError("Could not load history.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    const data = await getSolveHistory();
+    setRecords(data);
+    setRefreshing(false);
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Solve History</Text>
-        <Text style={styles.subtitle}>
+    <SafeAreaView style={[s.safe, { backgroundColor: t.BG }]}>
+
+      {/* Header */}
+      <View style={s.header}>
+        <Text style={[s.title, { color: t.TEXT }]}>Solve History</Text>
+        <Text style={[s.subtitle, { color: t.MUTED }]}>
           {records.length > 0
             ? `${records.length} solve${records.length !== 1 ? "s" : ""}`
             : "Your past solves appear here"}
         </Text>
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
-      ) : error ? (
-        <View style={styles.errorBox}>
-          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: ORANGE, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-            <Text style={{ fontSize: 22, fontWeight: '700', color: '#fff' }}>!</Text>
-          </View>
-          <Text style={styles.errorTxt}>{error}</Text>
-          <Pressable style={styles.retryBtn} onPress={() => load()}>
-            <Text style={styles.retryTxt}>Retry</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <FlatList
-          data={records}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => load(true)}
-              tintColor={GREEN}
-            />
-          }
-          renderItem={({ item, index }) => (
-            <View style={styles.card}>
-              <View style={styles.rank}>
-                <Text style={styles.rankTxt}>#{index + 1}</Text>
-              </View>
-              <View style={styles.cardBody}>
-                <Text style={styles.scramble} numberOfLines={1}>
-                  {item.scramble}
-                </Text>
-                <Text style={styles.solution} numberOfLines={1}>
-                  {item.solution.join(" ")}
-                </Text>
-                <Text style={styles.cardDate}>
-                  {formatDate(item.createdAt)}
-                </Text>
-              </View>
-              <View style={styles.cardRight}>
-                <Text style={styles.cardTime}>
-                  {formatTime(item.solveTimeMs)}
-                </Text>
-                <Text style={styles.cardMoves}>{item.moveCount} moves</Text>
-              </View>
-            </View>
-          )}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: CARD, borderWidth: 1, borderColor: BORDER, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                <Text style={{ fontSize: 18, fontWeight: '700', color: MUTED }}>#</Text>
-              </View>
-              <Text style={styles.emptyTxt}>
-                No solves yet.{"\n"}Scan a cube to get started!
-              </Text>
-            </View>
-          }
-        />
-      )}
+      <FlatList
+        data={records}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={s.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={t.ACCENT}
+          />
+        }
+        renderItem={({ item, index }) => (
+          <SolveCard item={item} index={index} />
+        )}
+        ListEmptyComponent={<EmptyState />}
+      />
+
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  header: { padding: 20, paddingBottom: 8 },
-  title: { fontSize: 26, fontWeight: "700", color: TEXT, marginBottom: 4 },
-  subtitle: { fontSize: 13, color: MUTED },
-  list: { padding: 20, gap: 12, paddingBottom: 48 },
+// ── Styles ────────────────────────────────────────────────────────────────────
 
+const s = StyleSheet.create({
+  safe: { flex: 1 },
+
+  // Header
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  title:    { fontSize: 26, fontWeight: "700", marginBottom: 4 },
+  subtitle: { fontSize: 13 },
+
+  // List
+  list: { paddingHorizontal: 20, paddingTop: 12, gap: 12, paddingBottom: 100 },
+
+  // Solve card
   card: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: CARD,
     borderRadius: 14,
     padding: 14,
     borderWidth: 1,
-    borderColor: BORDER,
   },
-  rank: { width: 32, alignItems: "center" },
-  rankTxt: { fontSize: 12, fontWeight: "700", color: MUTED },
+  rankCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankTxt:  { fontSize: 12, fontWeight: "700" },
   cardBody: { flex: 1, gap: 2 },
-  scramble: { fontSize: 12, color: MUTED, fontFamily: "monospace" },
-  solution: {
-    fontSize: 11,
-    color: MUTED,
-    opacity: 0.6,
-    fontFamily: "monospace",
-  },
-  cardDate: { fontSize: 11, color: MUTED, marginTop: 2 },
+  scramble: { fontSize: 12, fontFamily: "SpaceMono" },
+  solution: { fontSize: 11, fontFamily: "SpaceMono", opacity: 0.5 },
+  cardDate: { fontSize: 11, marginTop: 2 },
   cardRight: { alignItems: "flex-end", gap: 4 },
-  cardTime: { fontSize: 18, fontWeight: "700", color: GREEN },
-  cardMoves: { fontSize: 12, color: MUTED },
+  cardTime:  { fontSize: 18, fontWeight: "700" },
+  cardMoves: { fontSize: 12 },
 
-  errorBox: { alignItems: "center", marginTop: 60, paddingHorizontal: 40 },
-  errorEmoji: { fontSize: 40, marginBottom: 12 },
-  errorTxt: {
-    fontSize: 14,
-    color: MUTED,
-    textAlign: "center",
-    marginBottom: 20,
+  // Empty state
+  emptyWrap: {
+    paddingTop: 60,
+    paddingHorizontal: 20,
   },
-  retryBtn: {
-    backgroundColor: CARD,
-    borderRadius: 10,
-    paddingHorizontal: 24,
-    paddingVertical: 10,
+  emptyCard: {
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: BORDER,
+    padding: 32,
+    alignItems: "center",
+    gap: 8,
   },
-  retryTxt: { fontSize: 14, fontWeight: "600", color: TEXT },
-
-  empty: { alignItems: "center", marginTop: 60 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
-  emptyTxt: { fontSize: 14, color: MUTED, textAlign: "center", lineHeight: 22 },
+  emptyTitle: { fontSize: 18, fontWeight: "700" },
+  emptyDesc:  { fontSize: 14, textAlign: "center" },
+  scanNowBtn: {
+    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
+  },
+  scanNowTxt: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#000040",
+  },
 });

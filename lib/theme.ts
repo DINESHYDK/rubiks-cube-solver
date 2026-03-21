@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useColorScheme } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useThemeMode } from './themeContext';
 
 // ============================================
 // Dark Mode Tokens (default)
@@ -91,23 +89,7 @@ const lightTokens: ThemeTokens = {
 // Falls back to system color scheme, then dark.
 // ============================================
 export function useTheme(): ThemeTokens {
-  const systemScheme = useColorScheme();
-  const [mode, setMode] = useState<'dark' | 'light'>(
-    systemScheme === 'light' ? 'light' : 'dark'
-  );
-
-  useEffect(() => {
-    AsyncStorage.getItem('settings')
-      .then((raw) => {
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as { theme?: 'dark' | 'light' };
-        if (parsed.theme === 'light' || parsed.theme === 'dark') {
-          setMode(parsed.theme);
-        }
-      })
-      .catch(() => {/* keep default */});
-  }, []);
-
+  const { mode } = useThemeMode();
   return mode === 'dark' ? darkTokens : lightTokens;
 }
 

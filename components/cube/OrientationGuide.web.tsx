@@ -1,9 +1,20 @@
-import React, { useRef } from "react";
+import React from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
-import { Canvas, useFrame } from "@react-three/fiber";
-import * as THREE from "three";
+import { Canvas, extend } from "@react-three/fiber";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { Ionicons } from "@expo/vector-icons";
+
+extend({ RoundedBoxGeometry });
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      roundedBoxGeometry: any;
+    }
+  }
+}
+
 import type { FaceName } from "@/types/cube";
-import { ACCENT, CARD, BG, TEXT, MUTED, BORDER } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +28,15 @@ const FACE_COLORS: Record<FaceName, string> = {
 };
 
 const FACE_DISPLAY: Record<FaceName, string> = {
+  U: "White",
+  R: "Red",
+  F: "Green",
+  D: "Yellow",
+  L: "Orange",
+  B: "Blue",
+};
+
+const FACE_FULL: Record<FaceName, string> = {
   U: "White (Top)",
   R: "Red (Right)",
   F: "Green (Front)",
@@ -26,12 +46,12 @@ const FACE_DISPLAY: Record<FaceName, string> = {
 };
 
 const FACE_CENTERS: Record<FaceName, [number, number, number]> = {
-  U: [0,  1,  0],
-  D: [0, -1,  0],
-  F: [0,  0,  1],
-  B: [0,  0, -1],
-  R: [1,  0,  0],
-  L: [-1, 0,  0],
+  U: [ 0,  1,  0],
+  D: [ 0, -1,  0],
+  F: [ 0,  0,  1],
+  B: [ 0,  0, -1],
+  R: [ 1,  0,  0],
+  L: [-1,  0,  0],
 };
 
 const HIGHLIGHT_MAP: Record<FaceName, FaceName[]> = {
@@ -43,11 +63,20 @@ const HIGHLIGHT_MAP: Record<FaceName, FaceName[]> = {
   D: ["D", "F"],
 };
 
-const spacing = 1.02;
-const GHOST_COLOR   = "#888888";
-const GHOST_OPACITY = 0.08;
+const CAMERA_POSITIONS: Record<FaceName, [number, number, number]> = {
+  U: [ 4,  6,  5],
+  F: [ 4,  4,  7],
+  R: [ 7,  4,  4],
+  B: [-4,  4, -7],
+  L: [-7,  4,  4],
+  D: [ 0, -6,  5],
+};
 
-// ── Three.js helpers ──────────────────────────────────────────────────────────
+const spacing     = 1.02;
+const GHOST_COLOR   = "#888888";
+const GHOST_OPACITY = 0.06;
+
+// ── Three.js scene helpers ────────────────────────────────────────────────────
 
 function isCenter(pos: [number, number, number], face: FaceName): boolean {
   const c = FACE_CENTERS[face];
@@ -71,7 +100,7 @@ const GhostSticker = ({
       color={color}
       opacity={opacity}
       transparent
-      roughness={0.15}
+      roughness={0.1}
       clearcoat={1}
     />
   </mesh>
@@ -86,26 +115,24 @@ const GhostCubie = ({
 }) => {
   const [x, y, z] = pos;
 
-  const color = (face: FaceName) =>
-    highlights.includes(face) && isCenter(pos, face)
-      ? FACE_COLORS[face]
-      : GHOST_COLOR;
+  const stickerColor = (face: FaceName) =>
+    highlights.includes(face) && isCenter(pos, face) ? FACE_COLORS[face] : GHOST_COLOR;
 
-  const opacity = (face: FaceName) =>
+  const stickerOpacity = (face: FaceName) =>
     highlights.includes(face) && isCenter(pos, face) ? 1.0 : GHOST_OPACITY;
 
   return (
     <group position={[x * spacing, y * spacing, z * spacing]}>
       <mesh>
-        <boxGeometry args={[0.96, 0.96, 0.96]} />
+        <roundedBoxGeometry args={[0.96, 0.96, 0.96, 4, 0.08]} />
         <meshPhysicalMaterial color="#050505" roughness={0.2} metalness={0.1} clearcoat={1} />
       </mesh>
-      {x === 1  && <GhostSticker color={color("R")} opacity={opacity("R")} pos={[0.485, 0, 0]}  rot={[0, Math.PI / 2, 0]} />}
-      {x === -1 && <GhostSticker color={color("L")} opacity={opacity("L")} pos={[-0.485, 0, 0]} rot={[0, -Math.PI / 2, 0]} />}
-      {y === 1  && <GhostSticker color={color("U")} opacity={opacity("U")} pos={[0, 0.485, 0]}  rot={[-Math.PI / 2, 0, 0]} />}
-      {y === -1 && <GhostSticker color={color("D")} opacity={opacity("D")} pos={[0, -0.485, 0]} rot={[Math.PI / 2, 0, 0]} />}
-      {z === 1  && <GhostSticker color={color("F")} opacity={opacity("F")} pos={[0, 0, 0.485]}  rot={[0, 0, 0]} />}
-      {z === -1 && <GhostSticker color={color("B")} opacity={opacity("B")} pos={[0, 0, -0.485]} rot={[0, Math.PI, 0]} />}
+      {x === 1  && <GhostSticker color={stickerColor("R")} opacity={stickerOpacity("R")} pos={[ 0.485, 0, 0]}    rot={[0,  Math.PI / 2, 0]} />}
+      {x === -1 && <GhostSticker color={stickerColor("L")} opacity={stickerOpacity("L")} pos={[-0.485, 0, 0]}    rot={[0, -Math.PI / 2, 0]} />}
+      {y === 1  && <GhostSticker color={stickerColor("U")} opacity={stickerOpacity("U")} pos={[0,  0.485, 0]}    rot={[-Math.PI / 2, 0, 0]} />}
+      {y === -1 && <GhostSticker color={stickerColor("D")} opacity={stickerOpacity("D")} pos={[0, -0.485, 0]}    rot={[ Math.PI / 2, 0, 0]} />}
+      {z === 1  && <GhostSticker color={stickerColor("F")} opacity={stickerOpacity("F")} pos={[0, 0,  0.485]}    rot={[0, 0, 0]} />}
+      {z === -1 && <GhostSticker color={stickerColor("B")} opacity={stickerOpacity("B")} pos={[0, 0, -0.485]}    rot={[0, Math.PI, 0]} />}
     </group>
   );
 };
@@ -116,20 +143,16 @@ for (let x = -1; x <= 1; x++)
     for (let z = -1; z <= 1; z++)
       CUBIES.push([x, y, z]);
 
+// Static scene — no useFrame, no rotation, no controls
 const GhostScene = ({ currentFace }: { currentFace: FaceName }) => {
-  const groupRef = useRef<THREE.Group>(null);
   const highlights = HIGHLIGHT_MAP[currentFace];
-
-  useFrame((_, delta) => {
-    if (groupRef.current) groupRef.current.rotation.y += delta * 0.4;
-  });
-
   return (
     <group>
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[10, 15, 10]} intensity={1.1} />
-      <directionalLight position={[-4, -3, -4]} intensity={0.2} />
-      <group ref={groupRef} rotation={[0.4, 0.5, 0]}>
+      <ambientLight intensity={0.7} />
+      <directionalLight position={[10, 15, 10]} intensity={1.4} />
+      <directionalLight position={[-6, -4, -6]} intensity={1.6} />
+      <pointLight position={[0, 0, 3]} intensity={3} distance={12} />
+      <group rotation={[0.12, 0.1, 0]}>
         {CUBIES.map((pos, idx) => (
           <GhostCubie key={idx} pos={pos} highlights={highlights} />
         ))}
@@ -145,67 +168,151 @@ interface OrientationGuideProps {
   onReady: () => void;
 }
 
-export default function OrientationGuide({
-  currentFace,
-  onReady,
-}: OrientationGuideProps) {
+export default function OrientationGuide({ currentFace, onReady }: OrientationGuideProps) {
+  const t          = useTheme();
+  const highlights = HIGHLIGHT_MAP[currentFace];
+  const primaryFace   = highlights[0];
+  const referenceFace = highlights[1];
+  const faceAccent = FACE_COLORS[primaryFace];
+
   return (
-    <View style={styles.container}>
-      <View style={styles.canvasWrap}>
+    <View style={s.container}>
+
+      {/* ── 3D Reference cube ──────────────────────────────────────── */}
+      <View
+        style={[
+          s.canvasCard,
+          { backgroundColor: t.CARD, borderColor: faceAccent },
+        ]}
+      >
         <Canvas
-          camera={{ position: [5, 4, 6], fov: 45 }}
+          camera={{ position: CAMERA_POSITIONS[currentFace], fov: 45 }}
           gl={{ antialias: true, alpha: true }}
         >
           <GhostScene currentFace={currentFace} />
         </Canvas>
       </View>
 
-      <Text style={styles.instruction}>
-        Hold the{" "}
-        <Text style={[styles.instruction, styles.faceHighlight]}>
-          {FACE_DISPLAY[currentFace]}
-        </Text>{" "}
-        face toward the camera
-      </Text>
+      {/* ── Face chips ─────────────────────────────────────────────── */}
+      <View style={s.chipsRow}>
+        <View style={[s.chip, { backgroundColor: t.CARD, borderColor: faceAccent }]}>
+          <View style={[s.chipDot, { backgroundColor: faceAccent }]} />
+          <View>
+            <Text style={[s.chipName, { color: t.TEXT }]}>{FACE_DISPLAY[primaryFace]}</Text>
+            <Text style={[s.chipRole, { color: faceAccent }]}>FACE TO SCAN</Text>
+          </View>
+        </View>
+        <View style={[s.chip, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+          <View style={[s.chipDot, { backgroundColor: FACE_COLORS[referenceFace] }]} />
+          <View>
+            <Text style={[s.chipName, { color: t.TEXT }]}>{FACE_DISPLAY[referenceFace]}</Text>
+            <Text style={[s.chipRole, { color: t.MUTED }]}>REFERENCE</Text>
+          </View>
+        </View>
+      </View>
 
-      <Pressable style={styles.readyBtn} onPress={onReady}>
-        <Text style={styles.readyBtnTxt}>Ready — Open Camera</Text>
+      {/* ── Instruction text ───────────────────────────────────────── */}
+      <View style={s.instructionBox}>
+        <Text style={[s.instructionText, { color: t.TEXT }]}>
+          Hold the{" "}
+          <Text style={[s.instructionBold, { color: faceAccent }]}>
+            {FACE_FULL[primaryFace]}
+          </Text>
+          {"\n"}toward the camera.
+        </Text>
+        <Text style={[s.instructionSub, { color: t.MUTED }]}>
+          Keep{" "}
+          <Text style={{ color: FACE_COLORS[referenceFace], fontWeight: "600" }}>
+            {FACE_DISPLAY[referenceFace]}
+          </Text>
+          {" "}face as your reference ({referenceFace === "U" ? "top" : "front"}).
+        </Text>
+      </View>
+
+      {/* ── CTA button ─────────────────────────────────────────────── */}
+      <Pressable
+        style={[s.readyBtn, { backgroundColor: faceAccent }]}
+        onPress={onReady}
+      >
+        <Text style={s.readyBtnTxt}>Ready — Open Camera</Text>
+        <Ionicons name="chevron-forward" size={18} color="#000040" />
       </Pressable>
+
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
   container: {
     alignItems: "center",
-    paddingVertical: 24,
-    gap: 20,
+    paddingVertical: 16,
+    gap: 18,
+    width: "100%",
   },
-  canvasWrap: {
-    width: 200,
-    height: 180,
-    borderRadius: 16,
+  canvasCard: {
+    width: 240,
+    height: 220,
+    borderRadius: 20,
     overflow: "hidden",
-    backgroundColor: CARD,
+    borderWidth: 2,
+  },
+  chipsRow: {
+    flexDirection: "row",
+    gap: 10,
+    width: "100%",
+  },
+  chip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: BORDER,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  instruction: {
-    fontSize: 15,
-    color: TEXT,
-    textAlign: "center",
-    paddingHorizontal: 24,
-    lineHeight: 22,
+  chipDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
-  faceHighlight: {
-    color: ACCENT,
+  chipName: {
+    fontSize: 13,
     fontWeight: "700",
+    lineHeight: 18,
+  },
+  chipRole: {
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+  },
+  instructionBox: {
+    width: "100%",
+    gap: 4,
+  },
+  instructionText: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: "center",
+  },
+  instructionBold: {
+    fontWeight: "800",
+  },
+  instructionSub: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
   },
   readyBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: 12,
-    paddingHorizontal: 32,
-    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    borderRadius: 14,
+    paddingVertical: 15,
+    gap: 6,
   },
   readyBtnTxt: {
     fontSize: 15,

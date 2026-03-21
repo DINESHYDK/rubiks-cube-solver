@@ -11,6 +11,9 @@ import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useColorScheme } from "@/components/useColorScheme";
+import { initSolver } from "@/lib/solver";
+import { BG, TEXT } from "@/lib/theme";
+import { ThemeModeProvider } from "@/lib/themeContext";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -47,13 +50,41 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
+  useEffect(() => {
+    const warmUp = async () => {
+      try {
+        await new Promise<void>((resolve) => {
+          setTimeout(() => {
+            initSolver();
+            resolve();
+          }, 500);
+        });
+      } catch (e) {
+        console.warn("[Solver] Pre-warm failed:", e);
+      }
+    };
+    warmUp();
+  }, []);
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
-      </ThemeProvider>
-    </GestureHandlerRootView>
+    <ThemeModeProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="settings"
+              options={{
+                title: "Settings",
+                headerShown: true,
+                headerStyle: { backgroundColor: BG },
+                headerTintColor: TEXT,
+                headerShadowVisible: false,
+              }}
+            />
+          </Stack>
+        </ThemeProvider>
+      </GestureHandlerRootView>
+    </ThemeModeProvider>
   );
 }

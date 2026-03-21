@@ -2,25 +2,32 @@ import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
-import { useClientOnlyValue } from "@/components/useClientOnlyValue";
-import { BG, CARD, TEXT, MUTED, BORDER } from "@/lib/theme";
+import { CARD, MUTED, BORDER, ACCENT } from "@/lib/theme";
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: TEXT,
+        lazy: false,
+        headerShown: false,
+        tabBarActiveTintColor: ACCENT,
         tabBarInactiveTintColor: MUTED,
-        headerShown: useClientOnlyValue(false, true),
-        headerStyle: { backgroundColor: BG },
-        headerTintColor: TEXT,
         tabBarStyle: {
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 4,
+          position: 'absolute',
+          bottom: 24,
+          left: 20,
+          right: 20,
+          borderRadius: 32,
+          height: 64,
           backgroundColor: CARD,
-          borderTopColor: BORDER,
-          borderTopWidth: 1,
+          borderWidth: 1,
+          borderColor: BORDER,
+          elevation: 12,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.3,
+          shadowRadius: 16,
+          paddingBottom: 0,
         },
       }}
     >
@@ -62,12 +69,7 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="timer"
-        options={{
-          title: "Timer",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="stopwatch" size={24} color={color} />
-          ),
-        }}
+        options={{ href: null }}
       />
     </Tabs>
   );
