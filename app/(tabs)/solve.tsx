@@ -31,6 +31,9 @@ import {
   getScrambledState,
   isSolverReady,
 } from "@/lib/solver";
+import { cubeStateToString, stringToCubeState } from "@/lib/cubeState";
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const CubeJS = require("cubejs");
 import type { CubeState } from "@/types/cube";
 import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
@@ -42,16 +45,22 @@ import { useTheme } from "@/lib/theme";
 const MOVE_CHIPS = [
   { move: "R",  color: "#B71234" },
   { move: "R'", color: "#B71234" },
+  { move: "R2", color: "#B71234" },
   { move: "L",  color: "#FF5800" },
   { move: "L'", color: "#FF5800" },
+  { move: "L2", color: "#FF5800" },
   { move: "U",  color: "#EEEEEE" },
   { move: "U'", color: "#EEEEEE" },
+  { move: "U2", color: "#EEEEEE" },
   { move: "D",  color: "#FFD500" },
   { move: "D'", color: "#FFD500" },
+  { move: "D2", color: "#FFD500" },
   { move: "F",  color: "#009B48" },
   { move: "F'", color: "#009B48" },
+  { move: "F2", color: "#009B48" },
   { move: "B",  color: "#0046AD" },
   { move: "B'", color: "#0046AD" },
+  { move: "B2", color: "#0046AD" },
 ];
 
 // ── AnimatedPressable ─────────────────────────────────────────────────────────
@@ -97,7 +106,7 @@ export default function SolveScreen() {
   const t = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = Platform.OS === "web" && windowWidth >= 768;
-  const { cubeState, resetCube } = useCubeStore();
+  const { cubeState, setCubeState, resetCube } = useCubeStore();
 
   // ── State (unchanged) ────────────────────────────────────────────────────────
   const [scramble,      setScramble]      = useState("");
@@ -112,7 +121,12 @@ export default function SolveScreen() {
   const startTimeRef        = useRef<number>(0);
   const savedRef            = useRef(false);
   const lastSolvedStateRef  = useRef<string>("");
-  const isManualScrambleRef = useRef(false);
+  const isManualScrambleRef  = useRef(false);
+  const scrambleQueueRef     = useRef<(() => void) | null>(null);
+  const pendingScrambleRef   = useRef<string | null>(null);
+  const chipMoveRef          = useRef<string | null>(null);
+  const chipTappedRef        = useRef(false);
+  const [cubeKey, setCubeKey] = useState(0);
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
   const [stepDelay,    setStepDelay]    = useState(2500);
   const [isAnimating,  setIsAnimating]  = useState(false);
@@ -186,32 +200,87 @@ export default function SolveScreen() {
 
   // ── Handlers (unchanged) ──────────────────────────────────────────────────────
 
+  // ── Scramble animation helper ─────────────────────────────────────────────────
+  // Applies each move of a scramble string one-by-one to the live 3D cube,
+  // then updates cubeState in the store when done so Solve has accurate state.
+  const applyScramble = (scrambleStr: string) => {
+    const scrambleMoves = scrambleStr.trim().split(/\s+/);
+    let idx = 0;
+
+    const applyNext = () => {
+      if (idx >= scrambleMoves.length) {
+        // All scramble moves applied — update store so Solve has correct state
+        const scrambledState = getScrambledState(scrambleStr);
+        isManualScrambleRef.current = true;   // block the auto-solve effect
+        setCubeState(scrambledState);
+        const sol = solveFromScramble(scrambleStr);
+        setMoves(sol);
+        setCubeSnapshots(getIntermediateStates(scrambleStr, sol));
+        return;
+      }
+      const physicsMove = parseMove(scrambleMoves[idx]);
+      idx++;
+      setIsAnimating(true);
+      setActiveMove(physicsMove);
+      scrambleQueueRef.current = applyNext;
+    };
+
+    applyNext();
+  };
+
   const handleNewScramble = () => {
     isManualScrambleRef.current = true;
-    resetCube();
+    scrambleQueueRef.current = null;
+    chipTappedRef.current = false;
+    setActiveMove(null);
+    setIsAnimating(false);
+    setPlaying(false);
     setFromScan(false);
     const newScramble = generateScramble(20);
     setScramble(newScramble);
     setMoves([]);
-    setCubeSnapshots([getScrambledState(newScramble)]);
+    setCubeSnapshots([]);
     setStep(-1);
-    setPlaying(false);
     setTicks(0);
+    savedRef.current = false;
+    // Increment key to force Cube3D remount (resets THREE.js cubie positions)
+    // then start the scramble animation after scene re-initialises
+    pendingScrambleRef.current = newScramble;
+    setCubeKey((k) => k + 1);
   };
 
+  // After cubeKey changes the Cube3D is remounted with a fresh scene.
+  // Wait 150ms for THREE.js to initialise, then play the scramble moves.
+  useEffect(() => {
+    if (cubeKey === 0) return;
+    const str = pendingScrambleRef.current;
+    if (!str) return;
+    pendingScrambleRef.current = null;
+    const id = setTimeout(() => applyScramble(str), 150);
+    return () => clearTimeout(id);
+  }, [cubeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSolve = async () => {
-    if (!scramble) { handleNewScramble(); return; }
+    // Nothing to solve and nothing loaded — generate a scramble first
+    if (!scramble && JSON.stringify(cubeState) === JSON.stringify(SOLVED_STATE)) {
+      handleNewScramble();
+      return;
+    }
     setSolving(true);
     try {
       let sol: string[];
-      if (fromScan) {
+      let snapshots: CubeState[];
+      if (fromScan || !scramble || chipTappedRef.current) {
+        // Solve from the live cube state (scanned cube, manual chip taps, or modified scramble)
         sol = solveCubeState(cubeState);
-        setCubeSnapshots([cubeState]);
+        snapshots = [cubeState];
       } else {
+        // Solve from the scramble string (fastest + gets intermediate snapshots)
         sol = solveFromScramble(scramble);
-        setCubeSnapshots(getIntermediateStates(scramble, sol));
+        snapshots = getIntermediateStates(scramble, sol);
       }
       setMoves(sol);
+      setCubeSnapshots(snapshots);
       setStep(-1);
       setTicks(0);
       setPlaying(false);
@@ -222,8 +291,9 @@ export default function SolveScreen() {
     }
   };
 
-  const handleExecuteMove = (notation: string, isUndo = false) => {
+  const handleExecuteMove = (notation: string, isUndo = false, fromChip = false) => {
     if (isAnimating) return;
+    if (fromChip) chipMoveRef.current = isUndo ? notation + "_undo" : notation;
     setIsAnimating(true);
     const physicsMove = parseMove(notation, isUndo);
     setActiveMove(physicsMove);
@@ -232,6 +302,35 @@ export default function SolveScreen() {
   const handleMoveComplete = () => {
     setIsAnimating(false);
     setActiveMove(null);
+    // Drain the scramble animation queue first
+    if (scrambleQueueRef.current) {
+      const next = scrambleQueueRef.current;
+      scrambleQueueRef.current = null;
+      setTimeout(next, 30);   // small pause between scramble moves
+      return;
+    }
+    // Sync cubeState when a notation chip was tapped manually
+    if (chipMoveRef.current) {
+      const chipMove = chipMoveRef.current;
+      chipMoveRef.current = null;
+      try {
+        const isUndo = chipMove.endsWith("_undo");
+        const notation = isUndo ? chipMove.slice(0, -5) : chipMove;
+        const cube = CubeJS.fromString(cubeStateToString(cubeState));
+        if (isUndo) {
+          // Undo: apply the inverse move (append/remove prime)
+          const inverse = notation.includes("'")
+            ? notation.replace("'", "")
+            : notation + "'";
+          cube.move(inverse);
+        } else {
+          cube.move(notation);
+        }
+        isManualScrambleRef.current = true;
+        chipTappedRef.current = true;
+        setCubeState(stringToCubeState(cube.asString()));
+      } catch (_) { /* ignore parse errors */ }
+    }
     if (playing && step < moves.length - 1) {
       const delay = playbackMode === "auto" ? stepDelay : 100;
       setTimeout(() => {
@@ -241,6 +340,10 @@ export default function SolveScreen() {
       }, delay);
     } else if (playing && step >= moves.length - 1) {
       setPlaying(false);
+      // Reset visual cube to solved state — cubeState was still scrambled during playback
+      isManualScrambleRef.current = true;   // block auto-solve effect
+      setCubeState(SOLVED_STATE);           // sticker colors → all solved
+      setCubeKey((k) => k + 1);            // remount Cube3D: clean scene, cubies at correct positions
     }
   };
 
@@ -317,14 +420,17 @@ export default function SolveScreen() {
   const statusMutedColor = solved || playing ? "rgba(255,255,255,0.7)" : t.MUTED;
 
   // ── Cube card (shared helper) ─────────────────────────────────────────────────
+  const isScrambling = scrambleQueueRef.current !== null || pendingScrambleRef.current !== null;
+
   const renderCubeCard = (height: number) => (
     <View style={[s.cubeCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
       <Cube3D
+        key={cubeKey}
         cubeState={cubeState}
         height={height}
         currentMove={activeMove}
         onMoveComplete={handleMoveComplete}
-        animationSpeed={3.0}
+        animationSpeed={isScrambling ? 8.0 : 3.0}
       />
       {/* Bottom strip: badge + step counter */}
       <View style={[s.cubeStrip, { borderTopColor: t.BORDER }]}>
@@ -532,7 +638,7 @@ export default function SolveScreen() {
         {MOVE_CHIPS.map(({ move, color }) => (
           <AnimatedPressable
             key={move}
-            onPress={() => handleExecuteMove(move)}
+            onPress={() => handleExecuteMove(move, false, true)}
             disabled={isAnimating}
             style={[s.notationChip, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }, isAnimating && { opacity: 0.4 }]}
           >
@@ -579,6 +685,13 @@ export default function SolveScreen() {
 
           {/* Left 62%: cube */}
           <View style={[s.cubePanel, { backgroundColor: t.BG }]}>
+            <Text
+              style={[s.scrambleLine, { color: t.MUTED, marginBottom: 8, alignSelf: "center" }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {scramble || "Tap Scramble to begin"}
+            </Text>
             {renderCubeCard(Math.min(windowWidth * 0.55, 560))}
             <View style={s.hints}>
               <View style={s.hintItem}>
@@ -612,7 +725,7 @@ export default function SolveScreen() {
               {renderStats()}
               {renderPlayback()}
               {renderAlgorithm()}
-              {renderNotation()}
+              {!playing && !isAnimating && renderNotation()}
               {renderActions()}
             </ScrollView>
           </View>
@@ -657,11 +770,20 @@ export default function SolveScreen() {
           </Animated.View>
         </View>
 
+        {/* Scramble display */}
+        <Text
+          style={[s.scrambleLine, { color: t.MUTED }]}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {scramble || "Tap Scramble to begin"}
+        </Text>
+
         {renderCubeCard(260)}
         {renderStats()}
         {renderPlayback()}
         {renderAlgorithm()}
-        {renderNotation()}
+        {!playing && !isAnimating && renderNotation()}
         {renderActions()}
       </ScrollView>
 
@@ -701,8 +823,9 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 14,
   },
-  title:       { fontSize: 26, fontWeight: "700" },
-  solvedBadge: { fontSize: 18, fontWeight: "800" },
+  title:        { fontSize: 26, fontWeight: "700" },
+  solvedBadge:  { fontSize: 18, fontWeight: "800" },
+  scrambleLine: { fontSize: 11, fontFamily: "SpaceMono", marginBottom: 8 },
 
   // Wide layout
   wideContainer: { flex: 1, flexDirection: "row" },

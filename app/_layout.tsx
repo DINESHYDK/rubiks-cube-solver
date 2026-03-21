@@ -12,7 +12,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { useColorScheme } from "@/components/useColorScheme";
 import { initSolver } from "@/lib/solver";
-import { BG, TEXT } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 import { ThemeModeProvider } from "@/lib/themeContext";
 
 export {
@@ -70,21 +70,29 @@ function RootLayoutNav() {
     <ThemeModeProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="settings"
-              options={{
-                title: "Settings",
-                headerShown: true,
-                headerStyle: { backgroundColor: BG },
-                headerTintColor: TEXT,
-                headerShadowVisible: false,
-              }}
-            />
-          </Stack>
+          <NavStack />
         </ThemeProvider>
       </GestureHandlerRootView>
     </ThemeModeProvider>
+  );
+}
+
+// Separate component so it sits inside ThemeModeProvider and can read live theme tokens
+function NavStack() {
+  const t = useTheme();
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="settings"
+        options={{
+          title: "Settings",
+          headerShown: true,
+          headerStyle: { backgroundColor: t.BG },
+          headerTintColor: t.TEXT,
+          headerShadowVisible: false,
+        }}
+      />
+    </Stack>
   );
 }

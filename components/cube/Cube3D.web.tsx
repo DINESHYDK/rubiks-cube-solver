@@ -45,16 +45,27 @@ export const parseMove = (notation: string, isUndo = false) => {
   let isPrime = notation.includes("'");
   const isDouble = notation.includes("2");
   if (isUndo) isPrime = !isPrime;
-
-  const dir = isPrime ? 1 : -1;
   const angle = isDouble ? 2 : 1;
+
   switch (base) {
-    case "R": return { notation, axis: "x" as const, layer:  1, dir,    angle };
-    case "L": return { notation, axis: "x" as const, layer: -1, dir: -dir, angle };
-    case "U": return { notation, axis: "y" as const, layer:  1, dir,    angle };
-    case "D": return { notation, axis: "y" as const, layer: -1, dir: -dir, angle };
-    case "F": return { notation, axis: "z" as const, layer:  1, dir,    angle };
-    case "B": return { notation, axis: "z" as const, layer: -1, dir: -dir, angle };
+    case "R":
+      // Clockwise from right (+x) = negative x rotation
+      return { notation, axis: "x" as const, layer:  1, dir: isPrime ? 1 : -1, angle };
+    case "L":
+      // Clockwise from left (-x) = positive x rotation
+      return { notation, axis: "x" as const, layer: -1, dir: isPrime ? -1 : 1, angle };
+    case "U":
+      // Clockwise from above (+y) = negative y rotation
+      return { notation, axis: "y" as const, layer:  1, dir: isPrime ? 1 : -1, angle };
+    case "D":
+      // Clockwise from below (-y) = positive y rotation
+      return { notation, axis: "y" as const, layer: -1, dir: isPrime ? -1 : 1, angle };
+    case "F":
+      // Clockwise from front (+z) = negative z rotation
+      return { notation, axis: "z" as const, layer:  1, dir: isPrime ? 1 : -1, angle };
+    case "B":
+      // Clockwise from back (-z) = positive z rotation
+      return { notation, axis: "z" as const, layer: -1, dir: isPrime ? -1 : 1, angle };
     default: return null;
   }
 };
@@ -64,8 +75,8 @@ const uIdx = (x: number, z: number) => (z + 1) * 3 + (x + 1);
 const dIdx = (x: number, z: number) => (1 - z) * 3 + (x + 1);
 const fIdx = (x: number, y: number) => (1 - y) * 3 + (x + 1);
 const bIdx = (x: number, y: number) => (1 - y) * 3 + (1 - x);
-const rIdx = (y: number, z: number) => (1 - y) * 3 + (z + 1);
-const lIdx = (y: number, z: number) => (1 - y) * 3 + (1 - z);
+const rIdx = (y: number, z: number) => (1 - y) * 3 + (1 - z);
+const lIdx = (y: number, z: number) => (1 - y) * 3 + (z + 1);
 
 // ── Sticker ───────────────────────────────────────────────────────────────────
 const Sticker = ({
@@ -182,12 +193,12 @@ const Scene = ({
       const progress = Math.min(animProgress.current, 1);
 
       pivotRef.current.rotation[currentMove.axis as "x" | "y" | "z"] =
-        currentMove.dir * (Math.PI / 2) * easeInOut(progress);
+        currentMove.dir * (Math.PI / 2) * currentMove.angle * easeInOut(progress);
 
       if (progress >= 1) {
         pivotRef.current.rotation[
           currentMove.axis as "x" | "y" | "z"
-        ] = currentMove.dir * (Math.PI / 2);
+        ] = currentMove.dir * (Math.PI / 2) * currentMove.angle;
         pivotRef.current.updateMatrixWorld();
 
         const pivotChildren = [...pivotRef.current.children];
