@@ -2,16 +2,17 @@ import React from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 
-import { CARD, MUTED, BORDER, ACCENT } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 
 export default function TabLayout() {
+  const t = useTheme();
   return (
     <Tabs
       screenOptions={{
         lazy: false,
         headerShown: false,
-        tabBarActiveTintColor: ACCENT,
-        tabBarInactiveTintColor: MUTED,
+        tabBarActiveTintColor: t.ACCENT,
+        tabBarInactiveTintColor: t.MUTED,
         tabBarStyle: {
           position: 'absolute',
           bottom: 24,
@@ -19,9 +20,9 @@ export default function TabLayout() {
           right: 20,
           borderRadius: 32,
           height: 64,
-          backgroundColor: CARD,
+          backgroundColor: t.CARD,
           borderWidth: 1,
-          borderColor: BORDER,
+          borderColor: t.BORDER,
           elevation: 12,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: 8 },

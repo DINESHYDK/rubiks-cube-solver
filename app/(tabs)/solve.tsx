@@ -45,22 +45,16 @@ import { useTheme } from "@/lib/theme";
 const MOVE_CHIPS = [
   { move: "R",  color: "#B71234" },
   { move: "R'", color: "#B71234" },
-  { move: "R2", color: "#B71234" },
   { move: "L",  color: "#FF5800" },
   { move: "L'", color: "#FF5800" },
-  { move: "L2", color: "#FF5800" },
   { move: "U",  color: "#EEEEEE" },
   { move: "U'", color: "#EEEEEE" },
-  { move: "U2", color: "#EEEEEE" },
   { move: "D",  color: "#FFD500" },
   { move: "D'", color: "#FFD500" },
-  { move: "D2", color: "#FFD500" },
   { move: "F",  color: "#009B48" },
   { move: "F'", color: "#009B48" },
-  { move: "F2", color: "#009B48" },
   { move: "B",  color: "#0046AD" },
   { move: "B'", color: "#0046AD" },
-  { move: "B2", color: "#0046AD" },
 ];
 
 // ── AnimatedPressable ─────────────────────────────────────────────────────────
@@ -82,6 +76,10 @@ function AnimatedPressable({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
+  // Forward flex/width layout props to the Pressable so it participates
+  // correctly in flex rows — without this, flex:1 only reaches Animated.View
+  // and the outer Pressable collapses to content width.
+  const flat = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
   return (
     <Pressable
       onPressIn={() => {
@@ -94,6 +92,7 @@ function AnimatedPressable({
       }}
       onPress={onPress}
       disabled={disabled}
+      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf }}
     >
       <Animated.View style={[style, anim]}>{children}</Animated.View>
     </Pressable>
@@ -128,7 +127,7 @@ export default function SolveScreen() {
   const chipTappedRef        = useRef(false);
   const [cubeKey, setCubeKey] = useState(0);
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
-  const [stepDelay,    setStepDelay]    = useState(2500);
+  const [stepDelay,    setStepDelay]    = useState(1000);
   const [isAnimating,  setIsAnimating]  = useState(false);
 
   // ── Solver ready banner ───────────────────────────────────────────────────────
@@ -654,13 +653,6 @@ export default function SolveScreen() {
   const renderActions = () => (
     <View style={s.actionRow}>
       <AnimatedPressable
-        onPress={handleNewScramble}
-        style={[s.scrambleBtn, { backgroundColor: t.CARD, borderColor: t.BORDER }]}
-      >
-        <Ionicons name="shuffle" size={16} color={t.TEXT} />
-        <Text style={[s.scrambleBtnTxt, { color: t.TEXT }]}>Scramble</Text>
-      </AnimatedPressable>
-      <AnimatedPressable
         onPress={handleSolve}
         disabled={solving}
         style={[s.solveBtn, { backgroundColor: t.ACCENT }]}
@@ -690,7 +682,7 @@ export default function SolveScreen() {
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {scramble || "Tap Scramble to begin"}
+              {scramble || "Tap any move chip to scramble, then Solve"}
             </Text>
             {renderCubeCard(Math.min(windowWidth * 0.55, 560))}
             <View style={s.hints}>
@@ -725,7 +717,7 @@ export default function SolveScreen() {
               {renderStats()}
               {renderPlayback()}
               {renderAlgorithm()}
-              {!playing && !isAnimating && renderNotation()}
+              {renderNotation()}
               {renderActions()}
             </ScrollView>
           </View>
@@ -776,14 +768,14 @@ export default function SolveScreen() {
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {scramble || "Tap Scramble to begin"}
+          {scramble || "Tap any move chip to scramble, then Solve"}
         </Text>
 
         {renderCubeCard(260)}
         {renderStats()}
         {renderPlayback()}
         {renderAlgorithm()}
-        {!playing && !isAnimating && renderNotation()}
+        {renderNotation()}
         {renderActions()}
       </ScrollView>
 
@@ -979,21 +971,8 @@ const s = StyleSheet.create({
   notationLabel: { fontSize: 13, fontWeight: "700", fontFamily: "SpaceMono" },
 
   // Action row
-  actionRow: { flexDirection: "row", gap: 12 },
-  scrambleBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingVertical: 16,
-    minHeight: 52,
-  },
-  scrambleBtnTxt: { fontSize: 15, fontWeight: "600" },
+  actionRow: { marginBottom: 4 },
   solveBtn: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

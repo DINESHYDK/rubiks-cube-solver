@@ -6,6 +6,19 @@ import { cubeStateToString, stringToCubeState } from "./cubeState";
 
 let ready = false;
 
+function expandMoves(moves: string[]): string[] {
+  const expanded: string[] = [];
+  for (const move of moves) {
+    if (move.endsWith('2')) {
+      const base = move.replace('2', '');
+      expanded.push(base, base);
+    } else {
+      expanded.push(move);
+    }
+  }
+  return expanded;
+}
+
 export function initSolver(): void {
   if (!ready) {
     CubeJS.initSolver();
@@ -26,7 +39,7 @@ export function solveFromScramble(scramble: string): string[] {
   const cube = new CubeJS();
   cube.move(scramble);
   const sol: string = cube.solve();
-  return sol.trim() ? sol.trim().split(/\s+/) : [];
+  return sol.trim() ? expandMoves(sol.trim().split(/\s+/)) : [];
 }
 
 /**
@@ -36,7 +49,7 @@ export function solveCubeString(cubeString: string): string[] {
   initSolver();
   const cube = CubeJS.fromString(cubeString);
   const sol: string = cube.solve();
-  return sol.trim() ? sol.trim().split(/\s+/) : [];
+  return sol.trim() ? expandMoves(sol.trim().split(/\s+/)) : [];
 }
 
 /**
@@ -59,7 +72,7 @@ export function getIntermediateStates(
   const cube = new CubeJS();
   cube.move(scramble);
   const states: CubeState[] = [stringToCubeState(cube.asString())];
-  for (const move of solution) {
+  for (const move of expandMoves(solution)) {
     cube.move(move);
     states.push(stringToCubeState(cube.asString()));
   }

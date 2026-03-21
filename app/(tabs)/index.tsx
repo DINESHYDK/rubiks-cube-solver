@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Platform,
-  Alert,
 } from "react-native";
 import Animated, {
   useSharedValue,
@@ -245,8 +244,8 @@ export default function HomeScreen() {
             color="#534AB7"
             icon="book-outline"
             title="Tutorial"
-            desc="Learn moves & tips"
-            onPress={() => Alert.alert("Coming soon!", "Tutorial is on its way.")}
+            desc="Kociemba algorithm demo"
+            onPress={() => router.push("/tutorial" as any)}
           />
           <ActionCard
             color={t.GREEN}

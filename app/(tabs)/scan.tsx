@@ -79,6 +79,7 @@ function AnimatedPressable({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
+  const flat = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
   return (
     <Pressable
       onPressIn={() => {
@@ -91,6 +92,7 @@ function AnimatedPressable({
       }}
       onPress={onPress}
       disabled={disabled}
+      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf }}
     >
       <Animated.View style={[style, animStyle]}>{children}</Animated.View>
     </Pressable>
@@ -100,6 +102,7 @@ function AnimatedPressable({
 // ── ColorCell ─────────────────────────────────────────────────────────────────
 
 function ColorCell({ color, onPress }: { color: CubeColor; onPress: () => void }) {
+  const t         = useTheme();
   const scale     = useSharedValue(1);
   const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   return (
@@ -109,7 +112,7 @@ function ColorCell({ color, onPress }: { color: CubeColor; onPress: () => void }
       onPress={onPress}
     >
       <Animated.View
-        style={[s.colorCell, { backgroundColor: CUBE_COLORS[color] }, animStyle]}
+        style={[s.colorCell, { backgroundColor: CUBE_COLORS[color], borderColor: t.BORDER }, animStyle]}
       />
     </Pressable>
   );
@@ -477,13 +480,13 @@ export default function ScanScreen() {
                 <Text style={[s.cancelTxt, { color: t.MUTED }]}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[s.captureBtn, isCapturing && { opacity: 0.5 }]}
+                style={[s.captureBtn, { borderColor: t.isDark ? "#fff" : t.ACCENT }, isCapturing && { opacity: 0.5 }]}
                 onPress={handleCapture}
                 disabled={isCapturing}
               >
                 {isCapturing
-                  ? <ActivityIndicator color="#fff" size="large" />
-                  : <View style={s.captureInner} />
+                  ? <ActivityIndicator color={t.isDark ? "#fff" : t.ACCENT} size="large" />
+                  : <View style={[s.captureInner, { backgroundColor: t.isDark ? "#fff" : t.ACCENT }]} />
                 }
               </Pressable>
               <View style={{ width: 80 }} />
@@ -806,6 +809,7 @@ const s = StyleSheet.create({
   // ── Shared action row
   rowGap: { flexDirection: "row", gap: 12 },
   secondaryAction: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

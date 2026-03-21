@@ -62,6 +62,7 @@ function AnimatedPressable({
     transform: [{ scale: scale.value }],
     opacity: opacity.value,
   }));
+  const flat = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
   return (
     <Pressable
       onPressIn={() => {
@@ -73,6 +74,7 @@ function AnimatedPressable({
         opacity.value = withTiming(1, { duration: 120 });
       }}
       onPress={onPress}
+      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf }}
     >
       <ReAnimated.View style={[style, anim]}>{children}</ReAnimated.View>
     </Pressable>

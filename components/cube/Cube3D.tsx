@@ -222,27 +222,43 @@ const Scene = ({
         currentMove.dir * (Math.PI / 2) * currentMove.angle * easeInOut(progress);
 
       if (progress >= 1) {
-        pivotRef.current.rotation[
-          currentMove.axis as "x" | "y" | "z"
-        ] = currentMove.dir * (Math.PI / 2) * currentMove.angle;
+        // 1. Snap pivot to exact final angle
+        pivotRef.current.rotation[currentMove.axis as "x" | "y" | "z"] =
+          currentMove.dir * (Math.PI / 2) * currentMove.angle;
         pivotRef.current.updateMatrixWorld();
 
         const pivotChildren = [...pivotRef.current.children];
         for (let i = pivotChildren.length - 1; i >= 0; i--) {
           const c = pivotChildren[i];
+
+          // 2. Capture true world position + quaternion before detaching
+          const worldPos  = new THREE.Vector3();
+          const worldQuat = new THREE.Quaternion();
+          c.getWorldPosition(worldPos);
+          c.getWorldQuaternion(worldQuat);
+
+          // 3. Re-attach to main cube group
           cubeGroupRef.current.attach(c);
+
+          // 4. Snap position to grid
           c.position.set(
-            Math.round(c.position.x / spacing) * spacing,
-            Math.round(c.position.y / spacing) * spacing,
-            Math.round(c.position.z / spacing) * spacing
+            Math.round(worldPos.x / spacing) * spacing,
+            Math.round(worldPos.y / spacing) * spacing,
+            Math.round(worldPos.z / spacing) * spacing
           );
+
+          // 5. Apply exact world quaternion then snap Euler angles —
+          //    avoids floating-point drift corrupting 180° (U2/F2/etc.) snaps
+          c.quaternion.copy(worldQuat);
+          const euler = new THREE.Euler().setFromQuaternion(c.quaternion);
           c.rotation.set(
-            Math.round(c.rotation.x / (Math.PI / 2)) * (Math.PI / 2),
-            Math.round(c.rotation.y / (Math.PI / 2)) * (Math.PI / 2),
-            Math.round(c.rotation.z / (Math.PI / 2)) * (Math.PI / 2)
+            Math.round(euler.x / (Math.PI / 2)) * (Math.PI / 2),
+            Math.round(euler.y / (Math.PI / 2)) * (Math.PI / 2),
+            Math.round(euler.z / (Math.PI / 2)) * (Math.PI / 2)
           );
         }
 
+        // 6. Reset pivot for next move
         pivotRef.current.rotation.set(0, 0, 0);
         setAnimating(false);
         if (onMoveComplete) onMoveComplete();

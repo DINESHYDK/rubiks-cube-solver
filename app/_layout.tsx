@@ -6,14 +6,17 @@ import {
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import "react-native-reanimated";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useColorScheme } from "@/components/useColorScheme";
 import { initSolver } from "@/lib/solver";
 import { useTheme } from "@/lib/theme";
 import { ThemeModeProvider } from "@/lib/themeContext";
+import AppSplashScreen from "@/app/splash";
+import Onboarding from "@/app/onboarding";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -48,7 +51,18 @@ export default function RootLayout() {
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const colorScheme    = useColorScheme();
+  const [showSplash,   setShowSplash]   = useState(true);
+  const [showOnboard,  setShowOnboard]  = useState(false);
+  const [onboardReady, setOnboardReady] = useState(false);
+
+  // Check first-launch flag BEFORE splash disappears
+  useEffect(() => {
+    AsyncStorage.getItem("onboarded").then((val) => {
+      if (!val) setShowOnboard(true);
+      setOnboardReady(true);
+    }).catch(() => setOnboardReady(true));
+  }, []);
 
   useEffect(() => {
     const warmUp = async () => {
@@ -71,6 +85,17 @@ function RootLayoutNav() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
           <NavStack />
+          {showSplash && (
+            <AppSplashScreen
+              onComplete={() => {
+                setShowSplash(false);
+              }}
+            />
+          )}
+          {/* Show onboarding only after splash is gone and flag is checked */}
+          {!showSplash && onboardReady && showOnboard && (
+            <Onboarding onComplete={() => setShowOnboard(false)} />
+          )}
         </ThemeProvider>
       </GestureHandlerRootView>
     </ThemeModeProvider>
@@ -87,6 +112,16 @@ function NavStack() {
         name="settings"
         options={{
           title: "Settings",
+          headerShown: true,
+          headerStyle: { backgroundColor: t.BG },
+          headerTintColor: t.TEXT,
+          headerShadowVisible: false,
+        }}
+      />
+      <Stack.Screen
+        name="tutorial"
+        options={{
+          title: "Kociemba Demo",
           headerShown: true,
           headerStyle: { backgroundColor: t.BG },
           headerTintColor: t.TEXT,

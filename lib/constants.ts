@@ -65,7 +65,7 @@ export const SOLVED_STATE: CubeState = {
 function getApiBaseUrl(): string {
   if (!__DEV__) {
     // Replace with your deployed Python backend URL before publishing
-    return 'https://your-cv-backend.onrender.com';
+    return 'https://rubiks-backend-ydk.onrender.com';
   }
   // In dev, use the Expo dev server host (works over WiFi with Expo Go)
   const debuggerHost =
