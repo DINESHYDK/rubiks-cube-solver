@@ -109,7 +109,7 @@ export default function Onboarding({ onComplete }: Props) {
           showsVerticalScrollIndicator={false}
         >
           {/* ── Logo ────────────────────────────────────────────────── */}
-          <Text style={s.logo}>CubeIQ</Text>
+          <Text style={s.logo}>Cube Master</Text>
           <Text style={s.tagline}>Let's set you up</Text>
 
           {/* ── Animated card ───────────────────────────────────────── */}
@@ -153,7 +153,7 @@ export default function Onboarding({ onComplete }: Props) {
             onPress={handleNext}
           >
             <Text style={s.ctaTxt}>
-              {step === 2 ? "Start Using CubeIQ →" : "Continue →"}
+              {step === 2 ? "Start Using Cube Master →" : "Continue →"}
             </Text>
           </Pressable>
 

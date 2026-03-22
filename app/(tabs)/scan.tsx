@@ -453,9 +453,6 @@ export default function ScanScreen() {
         {phase === "orientation" && (
           <>
             <Text style={[s.title, { color: t.TEXT }]}>Get Ready</Text>
-            <Text style={[s.subtitle, { color: t.MUTED }]}>
-              {SCAN_INSTRUCTIONS[currentFace]}
-            </Text>
             <FacePills faceIdx={faceIdx} scanned={scanned} />
             <OrientationGuide currentFace={currentFace} onReady={handleOrientationReady} />
           </>
@@ -480,13 +477,13 @@ export default function ScanScreen() {
                 <Text style={[s.cancelTxt, { color: t.MUTED }]}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[s.captureBtn, { borderColor: t.isDark ? "#fff" : t.ACCENT }, isCapturing && { opacity: 0.5 }]}
+                style={[s.captureBtn, { borderColor: t.isDark ? "#fff" : t.TEXT }, isCapturing && { opacity: 0.5 }]}
                 onPress={handleCapture}
                 disabled={isCapturing}
               >
                 {isCapturing
-                  ? <ActivityIndicator color={t.isDark ? "#fff" : t.ACCENT} size="large" />
-                  : <View style={[s.captureInner, { backgroundColor: t.isDark ? "#fff" : t.ACCENT }]} />
+                  ? <ActivityIndicator color={t.isDark ? "#fff" : t.TEXT} size="large" />
+                  : <View style={[s.captureInner, { backgroundColor: t.isDark ? "#fff" : t.TEXT }]} />
                 }
               </Pressable>
               <View style={{ width: 80 }} />

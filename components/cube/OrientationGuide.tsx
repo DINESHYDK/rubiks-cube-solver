@@ -78,13 +78,24 @@ const FACE_DISPLAY: Record<FaceName, string> = {
   B: "Blue",
 };
 
-const FACE_FULL: Record<FaceName, string> = {
-  U: "White (Top)",
-  R: "Red (Right)",
-  F: "Green (Front)",
-  D: "Yellow (Bottom)",
-  L: "Orange (Left)",
-  B: "Blue (Back)",
+// Short one-line instruction for each face (≤8 words)
+const SHORT_INSTRUCTION: Record<FaceName, string> = {
+  U: "White face → camera · Green face → top",
+  F: "Green face → camera · White face → top",
+  R: "Red face → camera · White face → top",
+  B: "Blue face → camera · White face → top",
+  L: "Orange face → camera · White face → top",
+  D: "Yellow face → camera · Green face → top",
+};
+
+// Reference face color for the second dot
+const REFERENCE_FACE: Record<FaceName, FaceName> = {
+  U: "F",
+  F: "U",
+  R: "U",
+  B: "U",
+  L: "U",
+  D: "F",
 };
 
 // Center cubie position for each face
@@ -219,7 +230,7 @@ export default function OrientationGuide({ currentFace, onReady }: OrientationGu
   const t             = useTheme();
   const highlights    = HIGHLIGHT_MAP[currentFace];
   const primaryFace   = highlights[0];
-  const referenceFace = highlights[1];
+  const referenceFace = REFERENCE_FACE[currentFace];
   const faceAccent    = FACE_COLORS[primaryFace];
 
   const canvasShadow = Platform.select({
@@ -260,43 +271,33 @@ export default function OrientationGuide({ currentFace, onReady }: OrientationGu
         </View>
       </GuideErrorBoundary>
 
-      {/* ── Face chips ─────────────────────────────────────────────── */}
-      <View style={s.chipsRow}>
-        {/* Primary face — the one to scan */}
-        <View style={[s.chip, { backgroundColor: t.CARD, borderColor: faceAccent }]}>
-          <View style={[s.chipDot, { backgroundColor: faceAccent }]} />
-          <View>
-            <Text style={[s.chipName, { color: t.TEXT }]}>{FACE_DISPLAY[primaryFace]}</Text>
-            <Text style={[s.chipRole, { color: faceAccent }]}>FACE TO SCAN</Text>
-          </View>
-        </View>
-
-        {/* Reference face — how to orient the cube */}
-        <View style={[s.chip, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-          <View style={[s.chipDot, { backgroundColor: FACE_COLORS[referenceFace] }]} />
-          <View>
-            <Text style={[s.chipName, { color: t.TEXT }]}>{FACE_DISPLAY[referenceFace]}</Text>
-            <Text style={[s.chipRole, { color: t.MUTED }]}>REFERENCE</Text>
-          </View>
-        </View>
+      {/* ── Face icon ──────────────────────────────────────────────── */}
+      <View style={[s.faceIcon, { backgroundColor: faceAccent }]}>
+        <Text style={s.faceIconLetter}>{FACE_DISPLAY[primaryFace][0]}</Text>
       </View>
 
-      {/* ── Instruction text ───────────────────────────────────────── */}
-      <View style={s.instructionBox}>
-        <Text style={[s.instructionText, { color: t.TEXT }]}>
-          Hold the{" "}
-          <Text style={[s.instructionBold, { color: faceAccent }]}>
-            {FACE_FULL[primaryFace]}
-          </Text>
-          {"\n"}toward the camera.
-        </Text>
-        <Text style={[s.instructionSub, { color: t.MUTED }]}>
-          Keep{" "}
-          <Text style={{ color: FACE_COLORS[referenceFace], fontWeight: "600" }}>
-            {FACE_DISPLAY[referenceFace]}
-          </Text>
-          {" "}face as your reference ({referenceFace === "U" ? "top" : "front"}).
-        </Text>
+      {/* ── One-line instruction ────────────────────────────────────── */}
+      <Text style={[s.oneLiner, { color: t.TEXT }]}>
+        {SHORT_INSTRUCTION[currentFace]}
+      </Text>
+
+      {/* ── Two dots with labels ────────────────────────────────────── */}
+      <View style={s.dotsRow}>
+        {/* Primary — face to scan */}
+        <View style={s.dotItem}>
+          <View style={[s.dot, { backgroundColor: faceAccent }]} />
+          <Text style={[s.dotLabel, { color: t.TEXT }]}>{FACE_DISPLAY[primaryFace]}</Text>
+          <Text style={[s.dotRole, { color: faceAccent }]}>CAMERA</Text>
+        </View>
+
+        <Text style={[s.dotSep, { color: t.MUTED }]}>·</Text>
+
+        {/* Reference — orientation anchor */}
+        <View style={s.dotItem}>
+          <View style={[s.dot, { backgroundColor: FACE_COLORS[referenceFace] }]} />
+          <Text style={[s.dotLabel, { color: t.TEXT }]}>{FACE_DISPLAY[referenceFace]}</Text>
+          <Text style={[s.dotRole, { color: t.MUTED }]}>TOP</Text>
+        </View>
       </View>
 
       {/* ── CTA button ─────────────────────────────────────────────── */}
@@ -331,55 +332,57 @@ const s = StyleSheet.create({
     borderWidth: 2,
   },
 
-  // Chips
-  chipsRow: {
-    flexDirection: "row",
-    gap: 10,
-    width: "100%",
-  },
-  chip: {
-    flex: 1,
-    flexDirection: "row",
+  // Face icon
+  faceIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
     alignItems: "center",
-    gap: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    justifyContent: "center",
   },
-  chipDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  chipName: {
-    fontSize: 13,
-    fontWeight: "700",
-    lineHeight: 18,
-  },
-  chipRole: {
-    fontSize: 9,
-    fontWeight: "700",
-    letterSpacing: 0.6,
+  faceIconLetter: {
+    fontSize: 48,
+    fontWeight: "800",
+    color: "#000040",
+    lineHeight: 56,
   },
 
-  // Instructions
-  instructionBox: {
-    width: "100%",
-    gap: 4,
-  },
-  instructionText: {
-    fontSize: 16,
-    lineHeight: 24,
+  // One-liner
+  oneLiner: {
+    fontSize: 14,
+    fontWeight: "600",
     textAlign: "center",
+    letterSpacing: 0.3,
   },
-  instructionBold: {
-    fontWeight: "800",
+
+  // Two dots
+  dotsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
   },
-  instructionSub: {
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: "center",
+  dotItem: {
+    alignItems: "center",
+    gap: 6,
+  },
+  dot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  dotLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  dotRole: {
+    fontSize: 9,
+    fontWeight: "700",
+    letterSpacing: 1,
+  },
+  dotSep: {
+    fontSize: 24,
+    fontWeight: "300",
+    marginTop: -16,
   },
 
   // Button

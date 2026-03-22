@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "CubeIQ",
+    "name": "Cube Master",
     "slug": "rubiks-cube-solver",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -41,7 +41,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow CubeIQ to access your camera to scan cube faces."
+          "cameraPermission": "Allow Cube Master to access your camera to scan cube faces."
         }
       ],
       "expo-web-browser"

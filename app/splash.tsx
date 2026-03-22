@@ -5,114 +5,175 @@ import {
   StyleSheet,
   Animated,
   useWindowDimensions,
+  Easing,
 } from "react-native";
-
-// ── Simple Rubik face tile colors ─────────────────────────────────────────────
-const FACE_COLORS = [
-  "#B71234", "#FFD500", "#009B48",
-  "#0046AD", "#FF5800", "#FFFFFF",
-  "#FFD500", "#009B48", "#B71234",
-];
 
 interface Props {
   onComplete: () => void;
 }
 
-// ── AppSplashScreen ───────────────────────────────────────────────────────────
 export default function AppSplashScreen({ onComplete }: Props) {
   const { width, height } = useWindowDimensions();
 
-  // Animated values
-  const tileAnims      = useRef(FACE_COLORS.map(() => new Animated.Value(0))).current;
-  const titleOpacity   = useRef(new Animated.Value(0)).current;
-  const titleScale     = useRef(new Animated.Value(0.88)).current;
-  const subtitleOpacity = useRef(new Animated.Value(0)).current;
-  const splashOpacity  = useRef(new Animated.Value(1)).current;
-  const completedRef   = useRef(false);
+  // ── Main content fade-in ─────────────────────────────────────────────────────
+  const opacity = useRef(new Animated.Value(0)).current;
+  const scale   = useRef(new Animated.Value(0.85)).current;
+
+  // ── YDK letter animations ────────────────────────────────────────────────────
+  const yOpacity   = useRef(new Animated.Value(0)).current;
+  const dOpacity   = useRef(new Animated.Value(0)).current;
+  const kOpacity   = useRef(new Animated.Value(0)).current;
+  const yTranslate = useRef(new Animated.Value(-18)).current;
+  const dTranslate = useRef(new Animated.Value(0)).current;
+  const kTranslate = useRef(new Animated.Value(18)).current;
+  const yGlow      = useRef(new Animated.Value(0)).current; // loops for shimmer
+  const lineWidth  = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Safety net: force-complete after 4s
-    const safety = setTimeout(() => {
-      if (!completedRef.current) {
-        completedRef.current = true;
-        onComplete();
-      }
-    }, 4000);
+    // 1. Fade + scale main content in
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.timing(scale,   { toValue: 1, duration: 600, useNativeDriver: true }),
+    ]).start();
 
-    // Stagger tiles in
-    const tileStagger = Animated.stagger(
-      55,
-      tileAnims.map((anim) =>
-        Animated.spring(anim, { toValue: 1, useNativeDriver: true, friction: 6, tension: 100 })
-      )
-    );
-
-    Animated.sequence([
-      tileStagger,
-      Animated.delay(100),
-      // Title fades in
+    // 2. After 700ms: letters fly in staggered, then line expands
+    const letterDelay = setTimeout(() => {
       Animated.parallel([
-        Animated.timing(titleOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.spring(titleScale,   { toValue: 1, friction: 7, tension: 80, useNativeDriver: true }),
-      ]),
-      Animated.delay(80),
-      // Subtitle fades in
-      Animated.timing(subtitleOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-      // Hold
-      Animated.delay(800),
-      // Fade out entire splash
-      Animated.timing(splashOpacity, { toValue: 0, duration: 350, useNativeDriver: true }),
-    ]).start(() => {
-      if (!completedRef.current) {
-        completedRef.current = true;
-        onComplete();
-      }
-    });
+        // Y — slides in from left
+        Animated.timing(yOpacity,   { toValue: 1, duration: 380, useNativeDriver: true }),
+        Animated.spring(yTranslate, { toValue: 0, friction: 6, tension: 120, useNativeDriver: true }),
+        // D — fades up from below
+        Animated.sequence([
+          Animated.delay(110),
+          Animated.parallel([
+            Animated.timing(dOpacity,   { toValue: 1, duration: 380, useNativeDriver: true }),
+            Animated.spring(dTranslate, { toValue: 0, friction: 6, tension: 120, useNativeDriver: true }),
+          ]),
+        ]),
+        // K — slides in from right
+        Animated.sequence([
+          Animated.delay(220),
+          Animated.parallel([
+            Animated.timing(kOpacity,   { toValue: 1, duration: 380, useNativeDriver: true }),
+            Animated.spring(kTranslate, { toValue: 0, friction: 6, tension: 120, useNativeDriver: true }),
+          ]),
+        ]),
+      ]).start(() => {
+        // Underline sweeps in after letters land
+        Animated.timing(lineWidth, {
+          toValue: 1,
+          duration: 400,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start(() => {
+          // Continuous shimmer loop on Y letter
+          Animated.loop(
+            Animated.sequence([
+              Animated.timing(yGlow, { toValue: 1, duration: 900, useNativeDriver: true }),
+              Animated.timing(yGlow, { toValue: 0, duration: 900, useNativeDriver: true }),
+            ])
+          ).start();
+        });
+      });
+    }, 700);
 
-    return () => clearTimeout(safety);
+    // 3. Hard cutoff at 2200ms
+    const done = setTimeout(onComplete, 2200);
+
+    return () => {
+      clearTimeout(letterDelay);
+      clearTimeout(done);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Shimmer: Y pulses between silver-white and bright silver
+  const yColor = yGlow.interpolate({
+    inputRange:  [0, 1],
+    outputRange: ["#A8B8C8", "#F0F8FF"],
+  });
+
+  // Underline scale from 0→1 on X axis
+  const lineScale = lineWidth.interpolate({
+    inputRange:  [0, 1],
+    outputRange: [0, 1],
+  });
 
   return (
     <Animated.View
-      style={[s.container, { width, height, opacity: splashOpacity }]}
+      style={[s.container, { width, height }]}
       pointerEvents="none"
     >
-      {/* ── Animated tile grid ───────────────────────────────────── */}
-      <View style={s.faceGrid}>
-        {FACE_COLORS.map((color, i) => (
-          <Animated.View
-            key={i}
+      {/* ── Main logo + tagline ────────────────────────────────────── */}
+      <Animated.View style={[s.content, { opacity, transform: [{ scale }] }]}>
+        <View style={s.iconBox}>
+          <Text style={s.iconSymbol}>⬡</Text>
+        </View>
+        <Text style={s.title}>Cube Master</Text>
+        <Text style={s.subtitle}>ALGORITHMIC PRECISION</Text>
+      </Animated.View>
+
+      {/* ── YDK brand mark (bottom) ────────────────────────────────── */}
+      <View style={s.brandWrap}>
+        <Text style={s.createdBy}>created by</Text>
+
+        {/* YDK letters */}
+        <View style={s.ydkRow}>
+          {/* Y */}
+          <Animated.Text
             style={[
-              s.tile,
-              { backgroundColor: color },
+              s.ydkLetter,
               {
-                opacity: tileAnims[i],
-                transform: [{ scale: tileAnims[i] }],
+                opacity: yOpacity,
+                color: yColor,
+                transform: [{ translateX: yTranslate }],
               },
             ]}
-          />
-        ))}
-      </View>
+          >
+            Y
+          </Animated.Text>
 
-      {/* ── Text reveal ──────────────────────────────────────────── */}
-      <View style={s.textWrap}>
-        <Animated.Text
-          style={[
-            s.title,
-            { opacity: titleOpacity, transform: [{ scale: titleScale }] },
-          ]}
-        >
-          CubeIQ
-        </Animated.Text>
-        <Animated.Text style={[s.subtitle, { opacity: subtitleOpacity }]}>
-          ALGORITHMIC PRECISION
-        </Animated.Text>
+          {/* D */}
+          <Animated.Text
+            style={[
+              s.ydkLetter,
+              s.ydkD,
+              {
+                opacity: dOpacity,
+                transform: [{ translateY: dTranslate }],
+              },
+            ]}
+          >
+            D
+          </Animated.Text>
+
+          {/* K */}
+          <Animated.Text
+            style={[
+              s.ydkLetter,
+              {
+                opacity: kOpacity,
+                transform: [{ translateX: kTranslate }],
+              },
+            ]}
+          >
+            K
+          </Animated.Text>
+        </View>
+
+        {/* Animated underline */}
+        <View style={s.lineTrack}>
+          <Animated.View
+            style={[
+              s.line,
+              { transform: [{ scaleX: lineScale }] },
+            ]}
+          />
+        </View>
       </View>
     </Animated.View>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   container: {
     position: "absolute",
@@ -122,22 +183,24 @@ const s = StyleSheet.create({
     backgroundColor: "#000040",
     alignItems: "center",
     justifyContent: "center",
-    gap: 36,
   },
-  faceGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    width: 192,
-    gap: 6,
-  },
-  tile: {
-    width: 58,
-    height: 58,
-    borderRadius: 8,
-  },
-  textWrap: {
+
+  // Main content
+  content: {
     alignItems: "center",
-    gap: 10,
+    gap: 20,
+  },
+  iconBox: {
+    width: 100,
+    height: 100,
+    borderRadius: 24,
+    backgroundColor: "#90D5FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconSymbol: {
+    fontSize: 48,
+    color: "#000040",
   },
   title: {
     fontSize: 48,
@@ -151,5 +214,47 @@ const s = StyleSheet.create({
     color: "#8899CC",
     letterSpacing: 6,
     textTransform: "uppercase",
+  },
+
+  // YDK brand
+  brandWrap: {
+    position: "absolute",
+    bottom: 52,
+    alignItems: "center",
+    gap: 6,
+  },
+  createdBy: {
+    fontSize: 10,
+    fontWeight: "400",
+    color: "#4A5A7A",
+    letterSpacing: 3,
+    textTransform: "lowercase",
+  },
+  ydkRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 2,
+  },
+  ydkLetter: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#C0D0E0",
+    letterSpacing: 6,
+  },
+  ydkD: {
+    fontSize: 34,       // D is taller — makes the brand mark feel crafted
+    color: "#D8E8F8",
+  },
+  lineTrack: {
+    width: 64,
+    height: 2,
+    overflow: "hidden",
+  },
+  line: {
+    width: "100%",
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: "#7090B0",
+    transformOrigin: "left center",
   },
 });

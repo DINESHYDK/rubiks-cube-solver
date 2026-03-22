@@ -1,186 +1,194 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
   Pressable,
   ScrollView,
   StyleSheet,
-  Platform,
+  Animated,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from "react-native-reanimated";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useTheme } from "@/lib/theme";
-import { useSettings, getBestTime, getSessionStats } from "@/lib/storage";
+import { useSettings, getBestTime, getSessionStats, getSolveHistory } from "@/lib/storage";
 import { useCubeStore } from "@/stores/cubeStore";
 import Cube3D from "@/components/cube/Cube3D";
-import type { SessionStats } from "@/types/cube";
-
-// ── Shared shadow ─────────────────────────────────────────────────────────────
-const shadow = Platform.select({
-  ios: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-  },
-  android: { elevation: 4 },
-  default: {},
-}) as object;
+import type { SessionStats, SolveRecord } from "@/types/cube";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning,";
+  if (h < 17) return "Good afternoon,";
+  return "Good evening,";
+}
+
 function formatTime(ms: number | null | undefined): string {
   if (!ms) return "--";
-  const s = ms / 1000;
-  if (s < 60) return `${s.toFixed(2)}s`;
-  return `${Math.floor(s / 60)}:${(s % 60).toFixed(0).padStart(2, "0")}`;
+  const totalCs = Math.floor(ms / 10);
+  const cents   = totalCs % 100;
+  const totalSec = Math.floor(totalCs / 100);
+  const secs    = totalSec % 60;
+  const mins    = Math.floor(totalSec / 60);
+  const cStr    = cents.toString().padStart(2, "0");
+  if (mins > 0) return `${mins}:${secs.toString().padStart(2, "0")}.${cStr}`;
+  return `${secs}.${cStr}`;
 }
 
-// ── StatCard ──────────────────────────────────────────────────────────────────
-function StatCard({
-  label,
-  value,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  onPress?: () => void;
-}) {
-  const t = useTheme();
-  const scale = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  return (
-    <Pressable
-      style={s.statCardOuter}
-      onPressIn={() => { scale.value = withTiming(0.95, { duration: 120 }); }}
-      onPressOut={() => { scale.value = withTiming(1, { duration: 120 }); }}
-      onPress={onPress}
-    >
-      <Animated.View
-        style={[
-          s.statCard,
-          shadow,
-          { backgroundColor: t.CARD, borderColor: t.BORDER },
-          animStyle,
-        ]}
-      >
-        <Text style={[s.statLabel, { color: t.MUTED }]}>{label}</Text>
-        <Text style={[s.statValue, { color: t.TEXT }]}>{value}</Text>
-      </Animated.View>
-    </Pressable>
-  );
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// ── ActionCard ────────────────────────────────────────────────────────────────
-function ActionCard({
-  color,
+function hexOpacity(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ── QuickPill ─────────────────────────────────────────────────────────────────
+
+function QuickPill({
   icon,
-  title,
-  desc,
+  label,
   onPress,
+  highlight,
+  bgColor,
+  borderColor,
+  iconColor,
+  labelColor,
+  labelWeight,
 }: {
-  color: string;
   icon: string;
-  title: string;
-  desc: string;
+  label: string;
   onPress: () => void;
+  highlight?: boolean;
+  bgColor: string;
+  borderColor: string;
+  iconColor: string;
+  labelColor: string;
+  labelWeight: "600" | "700";
 }) {
-  const scale   = useSharedValue(1);
-  const opacity = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
+  const scale = useRef(new Animated.Value(1)).current;
   return (
     <Pressable
-      style={s.actionCardOuter}
-      onPressIn={() => {
-        scale.value   = withTiming(0.96, { duration: 120 });
-        opacity.value = withTiming(0.85, { duration: 120 });
-      }}
-      onPressOut={() => {
-        scale.value   = withTiming(1, { duration: 120 });
-        opacity.value = withTiming(1, { duration: 120 });
-      }}
+      style={s.pillOuter}
+      onPressIn={() => Animated.timing(scale, { toValue: 0.95, duration: 100, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(scale, { toValue: 1,    duration: 100, useNativeDriver: true }).start()}
       onPress={onPress}
     >
       <Animated.View
-        style={[s.actionCard, shadow, { backgroundColor: color }, animStyle]}
+        style={[s.pill, { backgroundColor: bgColor, borderColor }, { transform: [{ scale }] }]}
       >
-        <View style={s.iconWrap}>
-          <Ionicons name={icon as any} size={24} color="#fff" />
-        </View>
-        <Text style={s.actionTitle}>{title}</Text>
-        <Text style={s.actionDesc}>{desc}</Text>
+        <Ionicons name={icon as any} size={18} color={iconColor} />
+        <Text style={[s.pillLabel, { color: labelColor, fontWeight: labelWeight }]}>{label}</Text>
       </Animated.View>
     </Pressable>
   );
 }
 
 // ── CubeCard ──────────────────────────────────────────────────────────────────
+
 const CubeCard = React.memo(({ onPress }: { onPress: () => void }) => {
   const t         = useTheme();
-  const cubeState = useCubeStore((state) => state.cubeState);
-  const cubeScale = useSharedValue(1);
-  const cubeAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: cubeScale.value }],
-  }));
+  const cubeState = useCubeStore((s) => s.cubeState);
+  const scale     = useRef(new Animated.Value(1)).current;
+  const opacity   = useRef(new Animated.Value(1)).current;
 
   return (
     <Pressable
-      onPressIn={() => { cubeScale.value = withTiming(0.97, { duration: 120 }); }}
-      onPressOut={() => { cubeScale.value = withTiming(1, { duration: 120 }); }}
+      onPressIn={() => {
+        Animated.parallel([
+          Animated.timing(scale,   { toValue: 0.98, duration: 100, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.9,  duration: 100, useNativeDriver: true }),
+        ]).start();
+      }}
+      onPressOut={() => {
+        Animated.parallel([
+          Animated.timing(scale,   { toValue: 1, duration: 100, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+        ]).start();
+      }}
       onPress={onPress}
     >
       <Animated.View
         style={[
           s.cubeCard,
-          shadow,
           { backgroundColor: t.CARD, borderColor: t.BORDER },
-          cubeAnimStyle,
+          { transform: [{ scale }], opacity },
         ]}
       >
-        <Cube3D height={242} cubeState={cubeState} autoRotate={false} />
-        <View style={[s.cubeFooter, { borderTopColor: t.BORDER }]}>
-          <Text style={[s.cubeFooterLabel, { color: t.MUTED }]}>
-            Your last cube · tap to solve
-          </Text>
-          <Ionicons name="chevron-forward" size={14} color={t.MUTED} />
+        <Cube3D height={220} cubeState={cubeState} autoRotate={false} />
+        <View style={[s.cubeStrip, { borderTopColor: t.BORDER }]}>
+          <Text style={[s.cubeStripLabel, { color: t.MUTED }]}>Your cube</Text>
+          <Ionicons name="chevron-forward" size={16} color={t.MUTED} />
         </View>
       </Animated.View>
     </Pressable>
   );
 });
 
+// ── LastSolveCard ─────────────────────────────────────────────────────────────
+
+function LastSolveCard({ record }: { record: SolveRecord }) {
+  const t = useTheme();
+  return (
+    <View style={[s.lastCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+      {/* Top row */}
+      <View style={s.lastTop}>
+        <Text style={[s.lastTopLabel, { color: t.MUTED }]}>LAST SOLVE</Text>
+        <Text style={[s.lastTopDate,  { color: t.MUTED }]}>{formatDate(record.createdAt)}</Text>
+      </View>
+      {/* Middle row */}
+      <View style={s.lastMid}>
+        <Text style={[s.lastTime, { color: t.TEXT }]}>{formatTime(record.solveTimeMs)}</Text>
+        <Text style={[s.lastMoves, { color: t.MUTED }]}>{record.moveCount} moves</Text>
+      </View>
+      {/* Scramble */}
+      <Text style={[s.lastScramble, { color: t.MUTED }]} numberOfLines={1} ellipsizeMode="tail">
+        {record.scramble}
+      </Text>
+    </View>
+  );
+}
+
+// ── StatBox ───────────────────────────────────────────────────────────────────
+
+function StatBox({ label, value }: { label: string; value: string }) {
+  const t = useTheme();
+  return (
+    <View style={[s.statBox, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+      <Text style={[s.statLabel, { color: t.MUTED }]}>{label}</Text>
+      <Text style={[s.statValue, { color: t.TEXT }]}>{value}</Text>
+    </View>
+  );
+}
+
 // ── HomeScreen ────────────────────────────────────────────────────────────────
+
 export default function HomeScreen() {
-  const router    = useRouter();
-  const t         = useTheme();
+  const router  = useRouter();
+  const t       = useTheme();
   const { settings, loadSettings } = useSettings();
 
-  const [bestTime, setBestTime] = useState<number | null>(null);
-  const [stats, setStats]       = useState<SessionStats | null>(null);
+  const [bestTime,   setBestTime]   = useState<number | null>(null);
+  const [stats,      setStats]      = useState<SessionStats | null>(null);
+  const [lastSolve,  setLastSolve]  = useState<SolveRecord | null>(null);
 
-  // Reload data every time this screen is focused
   useFocusEffect(
     React.useCallback(() => {
       loadSettings();
       getBestTime().then(setBestTime);
       getSessionStats().then(setStats);
+      getSolveHistory().then((h) => setLastSolve(h.length > 0 ? h[0] : null));
     }, [])
   );
 
-  const username = settings.username || "Cuber";
+  const username    = settings.username || "Cuber";
+  const scanBg      = hexOpacity(t.HIGHLIGHT, 0.12);
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: t.BG }]}>
@@ -189,78 +197,66 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* ── 1. HEADER ROW ──────────────────────────────────────── */}
+        {/* ── 1. HEADER ──────────────────────────────────────────────── */}
         <View style={s.header}>
-          <Text style={[s.greeting, { color: t.TEXT }]}>
-            Hello,{" "}
-            <Text style={[s.username, { color: t.ACCENT }]}>{username}</Text>
-          </Text>
+          <View>
+            <Text style={[s.greeting, { color: t.MUTED }]}>{getGreeting()}</Text>
+            <Text style={[s.username, { color: t.TEXT }]}>{username}</Text>
+          </View>
           <Pressable
             onPress={() => router.push("/settings" as any)}
-            hitSlop={12}
+            style={[s.gearBtn, { backgroundColor: t.CARD, borderColor: t.BORDER }]}
+            hitSlop={8}
           >
-            <Ionicons name="settings-outline" size={24} color={t.MUTED} />
+            <Ionicons name="settings-outline" size={22} color={t.MUTED} />
           </Pressable>
         </View>
 
-        {/* ── 2. INTERACTIVE CUBE CARD ────────────────────────────── */}
+        {/* ── 2. CUBE CARD ───────────────────────────────────────────── */}
         <CubeCard onPress={() => router.push("/(tabs)/solve")} />
 
-        {/* ── 3. STATS ROW ───────────────────────────────────────── */}
-        <View style={s.sectionHeader}>
-          <Text style={[s.sectionLabel, { color: t.MUTED }]}>YOUR STATS</Text>
-        </View>
-        <View style={s.statsRow}>
-          <StatCard
-            label="BEST TIME"
-            value={formatTime(bestTime)}
-            onPress={() => router.push("/(tabs)/history")}
+        {/* ── 3. QUICK ACTIONS ───────────────────────────────────────── */}
+        <View style={s.pillRow}>
+          <QuickPill
+            icon="scan-outline"
+            label="Scan"
+            bgColor={scanBg}
+            borderColor={t.HIGHLIGHT}
+            iconColor={t.HIGHLIGHT}
+            labelColor={t.HIGHLIGHT}
+            labelWeight="700"
+            onPress={() => router.push("/(tabs)/scan")}
           />
-          <StatCard
-            label="TOTAL SOLVES"
-            value={stats ? String(stats.totalSolves) : "--"}
-            onPress={() => router.push("/(tabs)/history")}
+          <QuickPill
+            icon="cube-outline"
+            label="Solve"
+            bgColor={t.CARD}
+            borderColor={t.BORDER}
+            iconColor={t.TEXT}
+            labelColor={t.TEXT}
+            labelWeight="600"
+            onPress={() => router.push("/(tabs)/solve")}
           />
-          <StatCard
-            label="AO5"
-            value={formatTime(stats?.ao5)}
-            onPress={() => router.push("/(tabs)/history")}
+          <QuickPill
+            icon="stopwatch-outline"
+            label="Timer"
+            bgColor={t.CARD}
+            borderColor={t.BORDER}
+            iconColor={t.TEXT}
+            labelColor={t.TEXT}
+            labelWeight="600"
+            onPress={() => router.push("/(tabs)/timer")}
           />
         </View>
 
-        {/* ── 4. ACTION GRID ─────────────────────────────────────── */}
-        <View style={s.sectionHeader}>
-          <Text style={[s.sectionLabel, { color: t.MUTED }]}>QUICK ACTIONS</Text>
-        </View>
-        <View style={s.grid}>
-          <ActionCard
-            color={t.ACCENT}
-            icon="scan-outline"
-            title="Scan Cube"
-            desc="Camera color detection"
-            onPress={() => router.push("/(tabs)/scan")}
-          />
-          <ActionCard
-            color="#534AB7"
-            icon="book-outline"
-            title="Tutorial"
-            desc="Kociemba algorithm demo"
-            onPress={() => router.push("/tutorial" as any)}
-          />
-          <ActionCard
-            color={t.GREEN}
-            icon="stopwatch-outline"
-            title="Timer"
-            desc="Track your solve times"
-            onPress={() => router.push("/(tabs)/timer")}
-          />
-          <ActionCard
-            color={t.ORANGE}
-            icon="time-outline"
-            title="History"
-            desc="View past solves"
-            onPress={() => router.push("/(tabs)/history")}
-          />
+        {/* ── 4. LAST SOLVE ──────────────────────────────────────────── */}
+        {lastSolve && <LastSolveCard record={lastSolve} />}
+
+        {/* ── 5. STATS ROW ───────────────────────────────────────────── */}
+        <View style={s.statsRow}>
+          <StatBox label="BEST"   value={formatTime(bestTime)} />
+          <StatBox label="AVG"    value={formatTime(stats?.ao5)} />
+          <StatBox label="SOLVES" value={stats ? String(stats.totalSolves) : "--"} />
         </View>
 
       </ScrollView>
@@ -269,12 +265,14 @@ export default function HomeScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
-  safe: { flex: 1 },
+  safe:   { flex: 1 },
   scroll: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 100,
+    paddingTop: 16,
+    paddingBottom: 120,
+    gap: 16,
   },
 
   // Header
@@ -282,108 +280,115 @@ const s = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
   },
   greeting: {
-    fontSize: 26,
-    fontWeight: "700",
+    fontSize: 13,
+    fontWeight: "400",
   },
   username: {
+    fontSize: 28,
     fontWeight: "800",
+    letterSpacing: -0.5,
+    marginTop: 2,
   },
-
-  // Cube Card
-  cubeCard: {
-    borderRadius: 16,
+  gearBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
-    overflow: "hidden",
-    marginBottom: 16,
-  },
-  cubeFooter: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+  },
+
+  // Cube card
+  cubeCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  cubeStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    gap: 4,
   },
-  cubeFooterLabel: {
-    fontSize: 13,
-  },
+  cubeStripLabel: { fontSize: 13 },
 
-  // Section headers
-  sectionHeader: {
-    marginBottom: 10,
+  // Quick action pills
+  pillRow: {
+    flexDirection: "row",
+    gap: 10,
   },
-  sectionLabel: {
+  pillOuter: { flex: 1 },
+  pill: {
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  pillLabel: { fontSize: 14 },
+
+  // Last solve card
+  lastCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  lastTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  lastTopLabel: {
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "600",
     letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  lastTopDate: { fontSize: 11 },
+  lastMid: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
+  lastTime: {
+    fontSize: 36,
+    fontWeight: "800",
+    letterSpacing: -1,
+  },
+  lastMoves: { fontSize: 12 },
+  lastScramble: {
+    fontSize: 11,
+    fontFamily: "monospace",
   },
 
-  // Stats Row
+  // Stats row
   statsRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 16,
   },
-  statCardOuter: {
+  statBox: {
     flex: 1,
-  },
-  statCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: "center",
+    paddingHorizontal: 12,
     gap: 4,
   },
   statLabel: {
     fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.8,
+    fontWeight: "600",
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
   statValue: {
-    fontSize: 20,
-    fontWeight: "700",
-  },
-
-  // Action Grid
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 16,
-  },
-  actionCardOuter: {
-    width: "47.5%",
-  },
-  actionCard: {
-    borderRadius: 16,
-    padding: 18,
-    gap: 8,
-    minHeight: 130,
-    justifyContent: "flex-end",
-  },
-  iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  actionTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  actionDesc: {
-    fontSize: 11,
-    color: "rgba(255,255,255,0.8)",
-    lineHeight: 15,
+    fontSize: 22,
+    fontWeight: "800",
   },
 });

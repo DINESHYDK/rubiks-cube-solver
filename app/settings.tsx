@@ -259,7 +259,7 @@ export default function SettingsScreen() {
         <View style={[s.card, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
           <View style={s.row}>
             <Text style={[s.rowLabel, { color: t.TEXT }]}>App</Text>
-            <Text style={[s.rowValue, { color: t.MUTED }]}>CubeIQ</Text>
+            <Text style={[s.rowValue, { color: t.MUTED }]}>Cube Master</Text>
           </View>
           <Separator color={t.BORDER} />
           <View style={s.row}>
