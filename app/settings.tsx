@@ -259,7 +259,7 @@ export default function SettingsScreen() {
         <View style={[s.card, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
           <View style={s.row}>
             <Text style={[s.rowLabel, { color: t.TEXT }]}>App</Text>
-            <Text style={[s.rowValue, { color: t.MUTED }]}>Cube Master</Text>
+            <Text style={[s.rowValue, { color: t.MUTED }]}>CubeIQ</Text>
           </View>
           <Separator color={t.BORDER} />
           <View style={s.row}>
@@ -274,7 +274,7 @@ export default function SettingsScreen() {
           <Separator color={t.BORDER} />
           <View style={s.row}>
             <Text style={[s.rowLabel, { color: t.TEXT }]}>Made by</Text>
-            <Text style={[s.rowValue, { color: t.ACCENT }]}>[Your Name]</Text>
+            <Text style={[s.rowValue, { color: t.ACCENT }]}>Dinesh YDK</Text>
           </View>
         </View>
 

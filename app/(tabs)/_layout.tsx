@@ -16,7 +16,7 @@ import { useTheme } from "@/lib/theme";
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { name: "index",   route: "/",        iconActive: "house",  iconInactive: "house-outline",  label: "Home"    },
+  { name: "index",   route: "/",        iconActive: "home",   iconInactive: "home-outline",   label: "Home"    },
   { name: "scan",    route: "/scan",     iconActive: "camera", iconInactive: "camera-outline", label: "Scan"    },
   { name: "solve",   route: "/solve",    iconActive: "cube",   iconInactive: "cube-outline",   label: "Solve"   },
   { name: "history", route: "/history",  iconActive: "time",   iconInactive: "time-outline",   label: "History" },

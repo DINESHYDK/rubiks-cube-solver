@@ -181,6 +181,21 @@ const Scene = ({
           initialCubies.current.push([x, y, z]);
   }
 
+  // Geometry reset on mount — clears stale pivot state from tab navigation
+  useEffect(() => {
+    if (!cubeGroupRef.current || !pivotRef.current) return;
+    const lingering = [...pivotRef.current.children];
+    for (const c of lingering) {
+      cubeGroupRef.current.attach(c);
+      c.position.set(
+        Math.round(c.position.x / spacing) * spacing,
+        Math.round(c.position.y / spacing) * spacing,
+        Math.round(c.position.z / spacing) * spacing
+      );
+    }
+    pivotRef.current.rotation.set(0, 0, 0);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (currentMove && !animating && cubeGroupRef.current && pivotRef.current) {
       setAnimating(true);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   StyleSheet,
   ScrollView,
@@ -9,15 +9,9 @@ import {
   Platform,
   useWindowDimensions,
   Alert,
+  Animated,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  withDelay,
-  withSpring,
-} from "react-native-reanimated";
+import { useFocusEffect } from "expo-router";
 import ConfettiEffect from "@/components/effects/ConfettiEffect";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -39,23 +33,17 @@ import { useCubeStore } from "@/stores/cubeStore";
 import { SOLVED_STATE } from "@/lib/constants";
 import { saveSolve } from "@/lib/storage";
 import { useTheme } from "@/lib/theme";
+import PlaybackCard from "@/components/solve/PlaybackCard";
+import AlgorithmChips from "@/components/solve/AlgorithmChips";
 
-// ── Move chips data (face hex colors are cube-specific, not theme tokens) ─────
+// ── Helper: hex + alpha ────────────────────────────────────────────────────────
 
-const MOVE_CHIPS = [
-  { move: "R",  color: "#B71234" },
-  { move: "R'", color: "#B71234" },
-  { move: "L",  color: "#FF5800" },
-  { move: "L'", color: "#FF5800" },
-  { move: "U",  color: "#EEEEEE" },
-  { move: "U'", color: "#EEEEEE" },
-  { move: "D",  color: "#FFD500" },
-  { move: "D'", color: "#FFD500" },
-  { move: "F",  color: "#009B48" },
-  { move: "F'", color: "#009B48" },
-  { move: "B",  color: "#0046AD" },
-  { move: "B'", color: "#0046AD" },
-];
+function hexOpacity(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 // ── AnimatedPressable ─────────────────────────────────────────────────────────
 
@@ -70,31 +58,28 @@ function AnimatedPressable({
   children: React.ReactNode;
   disabled?: boolean;
 }) {
-  const scale   = useSharedValue(1);
-  const opacity = useSharedValue(1);
-  const anim    = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-  // Forward flex/width layout props to the Pressable so it participates
-  // correctly in flex rows — without this, flex:1 only reaches Animated.View
-  // and the outer Pressable collapses to content width.
-  const flat = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
+  const scale   = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const flat = StyleSheet.flatten(style as any) as any;
+  const pressIn = () => Animated.parallel([
+    Animated.timing(scale,   { toValue: 0.96, duration: 100, useNativeDriver: true }),
+    Animated.timing(opacity, { toValue: 0.85, duration: 100, useNativeDriver: true }),
+  ]).start();
+  const pressOut = () => Animated.parallel([
+    Animated.timing(scale,   { toValue: 1, duration: 100, useNativeDriver: true }),
+    Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+  ]).start();
   return (
     <Pressable
-      onPressIn={() => {
-        scale.value   = withTiming(0.96, { duration: 120 });
-        opacity.value = withTiming(0.82, { duration: 120 });
-      }}
-      onPressOut={() => {
-        scale.value   = withTiming(1, { duration: 120 });
-        opacity.value = withTiming(1, { duration: 120 });
-      }}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
       onPress={onPress}
       disabled={disabled}
-      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf }}
+      style={{ flex: flat?.flex, width: flat?.width, alignSelf: flat?.alignSelf }}
     >
-      <Animated.View style={[style, anim]}>{children}</Animated.View>
+      <Animated.View style={[style, { transform: [{ scale }], opacity }]}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -107,7 +92,7 @@ export default function SolveScreen() {
   const isWide = Platform.OS === "web" && windowWidth >= 768;
   const { cubeState, setCubeState, resetCube } = useCubeStore();
 
-  // ── State (unchanged) ────────────────────────────────────────────────────────
+  // ── State ─────────────────────────────────────────────────────────────────────
   const [scramble,      setScramble]      = useState("");
   const [moves,         setMoves]         = useState<string[]>([]);
   const [step,          setStep]          = useState(-1);
@@ -117,6 +102,7 @@ export default function SolveScreen() {
   const [fromScan,      setFromScan]      = useState(false);
   const [cubeSnapshots, setCubeSnapshots] = useState<CubeState[]>([]);
   const [activeMove,    setActiveMove]    = useState<any>(null);
+
   const startTimeRef        = useRef<number>(0);
   const savedRef            = useRef(false);
   const lastSolvedStateRef  = useRef<string>("");
@@ -125,10 +111,19 @@ export default function SolveScreen() {
   const pendingScrambleRef   = useRef<string | null>(null);
   const chipMoveRef          = useRef<string | null>(null);
   const chipTappedRef        = useRef(false);
-  const [cubeKey, setCubeKey] = useState(0);
+
+  const [cubeKey,      setCubeKey]      = useState(0);
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
   const [stepDelay,    setStepDelay]    = useState(1000);
   const [isAnimating,  setIsAnimating]  = useState(false);
+
+  // ── Clear stale animation state on tab focus ──────────────────────────────────
+  useFocusEffect(
+    useCallback(() => {
+      setActiveMove(null);
+      setIsAnimating(false);
+    }, [])
+  );
 
   // ── Solver ready banner ───────────────────────────────────────────────────────
   const [solverReady, setSolverReady] = useState(isSolverReady());
@@ -146,24 +141,21 @@ export default function SolveScreen() {
   // ── Confetti + solved overlay ─────────────────────────────────────────────────
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const solvedOpacity = useSharedValue(0);
-  const solvedAnim    = useAnimatedStyle(() => ({ opacity: solvedOpacity.value }));
+  const solvedOpacity  = useRef(new Animated.Value(0)).current;
+  const overlayOpacity = useRef(new Animated.Value(0)).current;
+  const overlayScale   = useRef(new Animated.Value(0.5)).current;
 
-  const overlayOpacity = useSharedValue(0);
-  const overlayScale   = useSharedValue(0.5);
-  const overlayAnim    = useAnimatedStyle(() => ({
-    opacity:   overlayOpacity.value,
-    transform: [{ scale: overlayScale.value }],
-  }));
+  // ── Progress bar animation ────────────────────────────────────────────────────
+  const progressAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Elapsed timer (unchanged) ─────────────────────────────────────────────────
+  // ── Elapsed timer ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => setTicks((t) => t + 1), 100);
+    const id = setInterval(() => setTicks((prev) => prev + 1), 100);
     return () => clearInterval(id);
   }, [playing]);
 
-  // ── Auto-solve scanned cube (unchanged) ───────────────────────────────────────
+  // ── Auto-solve scanned cube ───────────────────────────────────────────────────
   useEffect(() => {
     if (isManualScrambleRef.current) {
       isManualScrambleRef.current = false;
@@ -197,20 +189,65 @@ export default function SolveScreen() {
     }, 80);
   }, [cubeState]);
 
-  // ── Handlers (unchanged) ──────────────────────────────────────────────────────
+  // ── cubeKey change effect ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (cubeKey === 0) return;
+    const str = pendingScrambleRef.current;
+    if (!str) return;
+    pendingScrambleRef.current = null;
+    const id = setTimeout(() => applyScramble(str), 150);
+    return () => clearTimeout(id);
+  }, [cubeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-save ─────────────────────────────────────────────────────────────────
+  const pct     = moves.length > 0 && step >= 0 ? Math.round(((step + 1) / moves.length) * 100) : 0;
+  const elapsed = `${Math.floor(ticks / 10)}.${ticks % 10}s`;
+  const solved  = moves.length > 0 && step >= moves.length - 1;
+  const status  = solved ? "SOLVED" : playing ? "SOLVING" : moves.length > 0 ? "SCRAMBLED" : "READY";
+
+  useEffect(() => {
+    if (!solved || savedRef.current || !scramble) return;
+    savedRef.current = true;
+    const solveTimeMs = startTimeRef.current ? Date.now() - startTimeRef.current : undefined;
+    saveSolve({ scramble, solution: moves as any, moveCount: moves.length, solveTimeMs }).catch(() => {});
+  }, [solved, scramble, moves]);
+
+  // ── Solved animation trigger ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (solved) {
+      Animated.timing(solvedOpacity, { toValue: 1, duration: 600, useNativeDriver: true }).start();
+      setShowConfetti(true);
+      Animated.sequence([
+        Animated.spring(overlayScale, { toValue: 1.05, useNativeDriver: true, damping: 8, stiffness: 180 }),
+        Animated.spring(overlayScale, { toValue: 1.0,  useNativeDriver: true, damping: 12, stiffness: 200 }),
+      ]).start();
+      Animated.sequence([
+        Animated.timing(overlayOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.delay(2000),
+        Animated.timing(overlayOpacity, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start();
+    } else {
+      solvedOpacity.setValue(0);
+      overlayOpacity.setValue(0);
+      overlayScale.setValue(0.5);
+      setShowConfetti(false);
+    }
+  }, [solved]);
+
+  // ── Progress bar animation ────────────────────────────────────────────────────
+  useEffect(() => {
+    Animated.timing(progressAnim, { toValue: pct, duration: 300, useNativeDriver: false }).start();
+  }, [pct]);
 
   // ── Scramble animation helper ─────────────────────────────────────────────────
-  // Applies each move of a scramble string one-by-one to the live 3D cube,
-  // then updates cubeState in the store when done so Solve has accurate state.
   const applyScramble = (scrambleStr: string) => {
     const scrambleMoves = scrambleStr.trim().split(/\s+/);
     let idx = 0;
 
     const applyNext = () => {
       if (idx >= scrambleMoves.length) {
-        // All scramble moves applied — update store so Solve has correct state
         const scrambledState = getScrambledState(scrambleStr);
-        isManualScrambleRef.current = true;   // block the auto-solve effect
+        isManualScrambleRef.current = true;
         setCubeState(scrambledState);
         const sol = solveFromScramble(scrambleStr);
         setMoves(sol);
@@ -242,27 +279,13 @@ export default function SolveScreen() {
     setStep(-1);
     setTicks(0);
     savedRef.current = false;
-    // Increment key to force Cube3D remount (resets THREE.js cubie positions)
-    // then start the scramble animation after scene re-initialises
     pendingScrambleRef.current = newScramble;
     setCubeKey((k) => k + 1);
   };
 
-  // After cubeKey changes the Cube3D is remounted with a fresh scene.
-  // Wait 150ms for THREE.js to initialise, then play the scramble moves.
-  useEffect(() => {
-    if (cubeKey === 0) return;
-    const str = pendingScrambleRef.current;
-    if (!str) return;
-    pendingScrambleRef.current = null;
-    const id = setTimeout(() => applyScramble(str), 150);
-    return () => clearTimeout(id);
-  }, [cubeKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleSolve = async () => {
-    // Nothing to solve and nothing loaded — generate a scramble first
     if (!scramble && JSON.stringify(cubeState) === JSON.stringify(SOLVED_STATE)) {
-      handleNewScramble();
+      Alert.alert("Scan a cube first", "Scan your cube on the Scan tab, then press Solve.");
       return;
     }
     setSolving(true);
@@ -270,11 +293,9 @@ export default function SolveScreen() {
       let sol: string[];
       let snapshots: CubeState[];
       if (fromScan || !scramble || chipTappedRef.current) {
-        // Solve from the live cube state (scanned cube, manual chip taps, or modified scramble)
         sol = solveCubeState(cubeState);
         snapshots = [cubeState];
       } else {
-        // Solve from the scramble string (fastest + gets intermediate snapshots)
         sol = solveFromScramble(scramble);
         snapshots = getIntermediateStates(scramble, sol);
       }
@@ -299,16 +320,20 @@ export default function SolveScreen() {
   };
 
   const handleMoveComplete = () => {
-    setIsAnimating(false);
-    setActiveMove(null);
-    // Drain the scramble animation queue first
     if (scrambleQueueRef.current) {
+      // Scramble queue: unlock immediately so next move can start after 30ms
       const next = scrambleQueueRef.current;
       scrambleQueueRef.current = null;
-      setTimeout(next, 30);   // small pause between scramble moves
+      setIsAnimating(false);
+      setActiveMove(null);
+      setTimeout(next, 30);
       return;
     }
-    // Sync cubeState when a notation chip was tapped manually
+    // Delay unlock by 50ms — lets Three.js fully snap cubies before next input
+    setTimeout(() => {
+      setIsAnimating(false);
+      setActiveMove(null);
+    }, 50);
     if (chipMoveRef.current) {
       const chipMove = chipMoveRef.current;
       chipMoveRef.current = null;
@@ -317,7 +342,6 @@ export default function SolveScreen() {
         const notation = isUndo ? chipMove.slice(0, -5) : chipMove;
         const cube = CubeJS.fromString(cubeStateToString(cubeState));
         if (isUndo) {
-          // Undo: apply the inverse move (append/remove prime)
           const inverse = notation.includes("'")
             ? notation.replace("'", "")
             : notation + "'";
@@ -339,10 +363,9 @@ export default function SolveScreen() {
       }, delay);
     } else if (playing && step >= moves.length - 1) {
       setPlaying(false);
-      // Reset visual cube to solved state — cubeState was still scrambled during playback
-      isManualScrambleRef.current = true;   // block auto-solve effect
-      setCubeState(SOLVED_STATE);           // sticker colors → all solved
-      setCubeKey((k) => k + 1);            // remount Cube3D: clean scene, cubies at correct positions
+      isManualScrambleRef.current = true;
+      setCubeState(SOLVED_STATE);
+      setCubeKey((k) => k + 1);
     }
   };
 
@@ -374,53 +397,69 @@ export default function SolveScreen() {
     }
   };
 
-  // ── Computed (unchanged) ──────────────────────────────────────────────────────
-  const pct     = moves.length > 0 && step >= 0 ? Math.round(((step + 1) / moves.length) * 100) : 0;
-  const elapsed = `${Math.floor(ticks / 10)}.${ticks % 10}s`;
-  const solved  = moves.length > 0 && step >= moves.length - 1;
-  const status  = solved ? "SOLVED" : playing ? "SOLVING" : moves.length > 0 ? "SCRAMBLED" : "READY";
-
-  // ── Auto-save (unchanged) ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!solved || savedRef.current || !scramble) return;
-    savedRef.current = true;
-    const solveTimeMs = startTimeRef.current ? Date.now() - startTimeRef.current : undefined;
-    saveSolve({ scramble, solution: moves as any, moveCount: moves.length, solveTimeMs }).catch(() => {});
-  }, [solved, scramble, moves]);
-
-  // ── Trigger solved animation ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (solved) {
-      solvedOpacity.value = withTiming(1, { duration: 600 });
-
-      // Confetti burst
-      setShowConfetti(true);
-
-      // "Solved!" overlay: scale-spring in, hold 2s, fade out
-      overlayOpacity.value = withSequence(
-        withTiming(1, { duration: 400 }),
-        withDelay(2000, withTiming(0, { duration: 500 })),
-      );
-      overlayScale.value = withSequence(
-        withSpring(1.1, { damping: 8, stiffness: 180 }),
-        withSpring(1.0, { damping: 12, stiffness: 200 }),
-      );
-    } else {
-      solvedOpacity.value  = 0;
-      overlayOpacity.value = 0;
-      overlayScale.value   = 0.5;
-      setShowConfetti(false);
+  // ── Chip handlers ─────────────────────────────────────────────────────────────
+  const handleChipPress = (i: number) => {
+    setPlaying(false);
+    if (i > step) {
+      for (let j = step + 1; j <= i; j++) {
+        setTimeout(() => handleExecuteMove(moves[j]), (j - step - 1) * 100);
+      }
+    } else if (i < step) {
+      for (let j = step; j > i; j--) {
+        setTimeout(() => handleExecuteMove(moves[j], true), (step - j) * 100);
+      }
     }
-  }, [solved]);
+    setStep(i);
+  };
+
+  const handleMovePress = (move: string) => handleExecuteMove(move, false, true);
 
   // ── Derived UI values ─────────────────────────────────────────────────────────
-  const statusBg = solved ? t.GREEN : playing ? t.ACCENT : t.CARD;
-  const statusTextColor = solved || playing ? "#fff" : t.TEXT;
-  const statusMutedColor = solved || playing ? "rgba(255,255,255,0.7)" : t.MUTED;
-
-  // ── Cube card (shared helper) ─────────────────────────────────────────────────
   const isScrambling = scrambleQueueRef.current !== null || pendingScrambleRef.current !== null;
 
+  // Status badge config
+  const getStatusBadgeStyle = () => {
+    if (solved) return {
+      bg: hexOpacity("#009B48", 0.12),
+      border: hexOpacity("#009B48", 0.3),
+      dot: "#009B48",
+      text: "SOLVED",
+      textColor: "#009B48",
+    };
+    if (playing) return {
+      bg: hexOpacity("#B8E4C0", 0.10),
+      border: hexOpacity("#B8E4C0", 0.25),
+      dot: t.HIGHLIGHT,
+      text: "SOLVING",
+      textColor: t.HIGHLIGHT,
+    };
+    if (moves.length === 0) return {
+      bg: t.CARD_ALT,
+      border: t.BORDER,
+      dot: t.MUTED,
+      text: "READY",
+      textColor: t.MUTED,
+    };
+    return {
+      bg: t.CARD_ALT,
+      border: t.BORDER,
+      dot: t.MUTED,
+      text: "SCRAMBLED",
+      textColor: t.MUTED,
+    };
+  };
+  const badge = getStatusBadgeStyle();
+
+  const progressFillColor = solved ? "#009B48" : playing ? t.HIGHLIGHT : t.ACCENT;
+
+  // Status card bg for stats row
+  const statusCardBg = solved
+    ? "rgba(0,155,72,0.15)"
+    : playing
+    ? "rgba(184,228,192,0.10)"
+    : t.CARD;
+
+  // ── Render: cube card ─────────────────────────────────────────────────────────
   const renderCubeCard = (height: number) => (
     <View style={[s.cubeCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
       <Cube3D
@@ -431,241 +470,88 @@ export default function SolveScreen() {
         onMoveComplete={handleMoveComplete}
         animationSpeed={isScrambling ? 8.0 : 3.0}
       />
-      {/* Bottom strip: badge + step counter */}
+      {/* Bottom strip */}
       <View style={[s.cubeStrip, { borderTopColor: t.BORDER }]}>
-        <View style={s.stripLeft}>
-          <View style={[s.stripDot, {
-            backgroundColor: solved ? t.GREEN : moves.length > 0 ? t.ACCENT : t.MUTED,
-          }]} />
-          <Text style={[s.stripBadge, { color: t.MUTED }]}>
-            {solved ? "SOLVED" : moves.length > 0 ? `${moves.length} MOVES` : "SOLVED STATE"}
-          </Text>
+        {/* Status badge */}
+        <View style={[s.statusBadge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
+          <View style={[s.statusDot, { backgroundColor: badge.dot }]} />
+          <Text style={[s.statusTxt, { color: badge.textColor }]}>{badge.text}</Text>
         </View>
+        {/* Step counter */}
         {moves.length > 0 && step >= 0 && (
-          <Text style={[s.stripStep, { color: t.TEXT }]}>
+          <Text style={[s.stepCounter, { color: t.TEXT }]}>
             {step + 1} / {moves.length}
           </Text>
         )}
       </View>
       {/* Progress bar */}
       <View style={[s.progressTrack, { backgroundColor: t.BORDER }]}>
-        <View style={[s.progressFill, { width: `${pct}%` as any, backgroundColor: t.ACCENT }]} />
+        <Animated.View
+          style={[
+            s.progressFill,
+            {
+              backgroundColor: progressFillColor,
+              width: progressAnim.interpolate({
+                inputRange: [0, 100],
+                outputRange: ["0%", "100%"],
+              }),
+            },
+          ]}
+        />
       </View>
     </View>
   );
 
-  // ── Stats row ─────────────────────────────────────────────────────────────────
+  // ── Render: stats row ─────────────────────────────────────────────────────────
   const renderStats = () => (
     <View style={s.statsRow}>
-      <View style={[s.statBox, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-        <Text style={[s.statVal, { color: t.TEXT }]}>{moves.length > 0 ? String(moves.length) : "0"}</Text>
-        <Text style={[s.statLbl, { color: t.MUTED }]}>MOVES</Text>
-      </View>
-      <View style={[s.statBox, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-        <Text style={[s.statVal, { color: t.TEXT }]}>
-          {moves.length > 0 && step >= 0 ? `${step + 1}/${moves.length}` : "0/0"}
+      <View style={[s.statCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+        <Text style={[s.statLabel, { color: t.MUTED }]}>MOVES</Text>
+        <Text style={[s.statValue, { color: t.TEXT }]}>
+          {moves.length > 0 ? String(moves.length) : "0"}
         </Text>
-        <Text style={[s.statLbl, { color: t.MUTED }]}>STEP</Text>
       </View>
-      <View style={[s.statBox, { backgroundColor: statusBg, borderColor: t.BORDER }]}>
-        <Text style={[s.statVal, { fontSize: 13, color: statusTextColor }]}>{status}</Text>
-        <Text style={[s.statLbl, { color: statusMutedColor }]}>STATUS</Text>
+      <View style={[s.statCard, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+        <Text style={[s.statLabel, { color: t.MUTED }]}>STEP</Text>
+        <Text style={[s.statValue, { color: t.TEXT }]}>
+          {moves.length > 0 && step >= 0 ? `${step + 1} / ${moves.length}` : "0 / 0"}
+        </Text>
       </View>
-    </View>
-  );
-
-  // ── Playback card ─────────────────────────────────────────────────────────────
-  const renderPlayback = () => (
-    <View style={[s.card, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-      <Text style={[s.cardLabel, { color: t.MUTED }]}>PLAYBACK</Text>
-
-      {/* Mode toggle */}
-      <View style={s.modeRow}>
-        <Text style={[s.modeHint, { color: t.TEXT }]}>Mode</Text>
-        <View style={[s.modeToggle, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}>
-          {(["auto", "manual"] as const).map((m) => (
-            <Pressable
-              key={m}
-              onPress={() => setPlaybackMode(m)}
-              style={[s.modePill, playbackMode === m && { backgroundColor: t.ACCENT }]}
-            >
-              <Text style={[
-                s.modePillTxt,
-                { color: playbackMode === m ? "#000040" : t.MUTED },
-                playbackMode === m && { fontWeight: "700" },
-              ]}>
-                {m === "auto" ? "Auto" : "Manual"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
-
-      {/* Auto mode: step delay */}
-      {playbackMode === "auto" && (
-        <>
-          <View style={s.delayRow}>
-            <Text style={[s.delayLabel, { color: t.TEXT }]}>Step Delay</Text>
-            <View style={[s.delayBadge, { backgroundColor: t.CARD_ALT }]}>
-              <Text style={[s.delayValue, { color: t.ACCENT }]}>{stepDelay} ms</Text>
-            </View>
-          </View>
-          {Platform.OS === "web" ? (
-            <View style={s.sliderWrap}>
-              <input
-                type="range"
-                min={100}
-                max={2500}
-                step={100}
-                value={stepDelay}
-                onChange={(e: any) => setStepDelay(Number(e.target.value))}
-                style={{ width: "100%", accentColor: t.ACCENT, height: 4, cursor: "pointer" }}
-              />
-              <View style={s.sliderLabels}>
-                <Text style={[s.sliderLbl, { color: t.MUTED }]}>Fast — 100ms</Text>
-                <Text style={[s.sliderLbl, { color: t.MUTED }]}>2500ms — Slow</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={s.nativeDelayRow}>
-              <AnimatedPressable
-                onPress={() => setStepDelay((d) => Math.max(100, d - 200))}
-                style={[s.delayBtn, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}
-              >
-                <Text style={[s.delayBtnTxt, { color: t.TEXT }]}>−</Text>
-              </AnimatedPressable>
-              <Text style={[s.delayCenter, { color: t.TEXT }]}>{stepDelay} ms</Text>
-              <AnimatedPressable
-                onPress={() => setStepDelay((d) => Math.min(2500, d + 200))}
-                style={[s.delayBtn, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}
-              >
-                <Text style={[s.delayBtnTxt, { color: t.TEXT }]}>+</Text>
-              </AnimatedPressable>
-            </View>
-          )}
-        </>
-      )}
-
-      {/* Transport controls (always visible) */}
-      <View style={s.transportRow}>
-        <AnimatedPressable
-          onPress={handlePrev}
-          disabled={step < 0 || isAnimating}
-          style={[s.transportBtn, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }, step < 0 && s.dimmed]}
-        >
-          <Ionicons name="play-back" size={14} color={t.TEXT} />
-          <Text style={[s.transportTxt, { color: t.TEXT }]}>Prev</Text>
-        </AnimatedPressable>
-        <AnimatedPressable
-          onPress={playing ? handlePause : handlePlay}
-          disabled={moves.length === 0 || isAnimating}
-          style={[s.playBtn, { backgroundColor: solved ? t.GREEN : t.ACCENT }, moves.length === 0 && s.dimmed]}
-        >
-          {solving ? (
-            <ActivityIndicator color="#000040" size="small" />
-          ) : (
-            <>
-              <Ionicons name={playing ? "pause" : "play"} size={16} color="#000040" />
-              <Text style={s.playBtnTxt}>{playing ? "Pause" : "Play"}</Text>
-            </>
-          )}
-        </AnimatedPressable>
-        <AnimatedPressable
-          onPress={handleNext}
-          disabled={step >= moves.length - 1 || isAnimating}
-          style={[s.transportBtn, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }, step >= moves.length - 1 && s.dimmed]}
-        >
-          <Text style={[s.transportTxt, { color: t.TEXT }]}>Next</Text>
-          <Ionicons name="play-forward" size={14} color={t.TEXT} />
-        </AnimatedPressable>
+      <View style={[s.statCard, { backgroundColor: statusCardBg, borderColor: t.BORDER }]}>
+        <Text style={[s.statLabel, { color: t.MUTED }]}>STATUS</Text>
+        <Text style={[s.statValue, { color: t.TEXT }]}>{status}</Text>
       </View>
     </View>
   );
 
-  // ── Algorithm sequence ────────────────────────────────────────────────────────
-  const renderAlgorithm = () => {
-    if (moves.length === 0) return null;
+  // ── Render: solver initializing banner ───────────────────────────────────────
+  const renderSolverBanner = () => {
+    if (solverReady) return null;
     return (
-      <View style={[s.card, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-        <Text style={[s.cardLabel, { color: t.MUTED }]}>ALGORITHM SEQUENCE</Text>
-        <View style={s.chips}>
-          {moves.map((m, i) => {
-            const isActive = i === step;
-            const isDone   = i < step;
-            return (
-              <Pressable
-                key={i}
-                onPress={() => {
-                  setPlaying(false);
-                  if (i > step) {
-                    for (let j = step + 1; j <= i; j++) {
-                      setTimeout(() => handleExecuteMove(moves[j]), (j - step - 1) * 100);
-                    }
-                  } else if (i < step) {
-                    for (let j = step; j > i; j--) {
-                      setTimeout(() => handleExecuteMove(moves[j], true), (step - j) * 100);
-                    }
-                  }
-                  setStep(i);
-                }}
-                style={[
-                  s.algChip,
-                  {
-                    backgroundColor: isActive ? t.ACCENT : t.CARD_ALT,
-                    borderColor:     isActive ? t.ACCENT : t.BORDER,
-                    opacity:         isDone ? 0.3 : 1,
-                    transform:       isActive ? [{ scale: 1.05 }] : [],
-                  },
-                ]}
-              >
-                <Text style={[s.algChipTxt, { color: isActive ? "#000040" : t.TEXT, fontWeight: isActive ? "700" : "400" }]}>
-                  {m}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+      <View style={[s.solverBanner, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+        <ActivityIndicator size="small" color={t.HIGHLIGHT} />
+        <Text style={[s.solverBannerTxt, { color: t.MUTED }]}>Solver initializing...</Text>
       </View>
     );
   };
 
-  // ── Move notation guide ───────────────────────────────────────────────────────
-  const renderNotation = () => (
-    <View style={[s.card, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
-      <Text style={[s.cardLabel, { color: t.MUTED }]}>TAP ANY MOVE TO PREVIEW IT</Text>
-      <View style={s.notationGrid}>
-        {MOVE_CHIPS.map(({ move, color }) => (
-          <AnimatedPressable
-            key={move}
-            onPress={() => handleExecuteMove(move, false, true)}
-            disabled={isAnimating}
-            style={[s.notationChip, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }, isAnimating && { opacity: 0.4 }]}
-          >
-            <View style={[s.notationDot, { backgroundColor: color }]} />
-            <Text style={[s.notationLabel, { color: t.TEXT }]}>{move}</Text>
-          </AnimatedPressable>
-        ))}
-      </View>
-    </View>
-  );
-
-  // ── Action buttons ────────────────────────────────────────────────────────────
-  const renderActions = () => (
-    <View style={s.actionRow}>
-      <AnimatedPressable
+  // ── Render: action button ─────────────────────────────────────────────────────
+  const renderActionButton = () => (
+    <View style={s.actionWrapper}>
+      <Pressable
         onPress={handleSolve}
-        disabled={solving}
-        style={[s.solveBtn, { backgroundColor: t.ACCENT }]}
+        disabled={solving || solved}
+        style={[s.solveBtn, { backgroundColor: "#009B48", opacity: (solving || solved) ? 0.6 : 1 }]}
       >
         {solving ? (
-          <ActivityIndicator color="#000040" size="small" />
+          <ActivityIndicator size="small" color="#fff" />
         ) : (
           <>
-            <Ionicons name="bulb-outline" size={16} color="#000040" />
+            <Ionicons name="bulb-outline" size={20} color="#fff" />
             <Text style={s.solveBtnTxt}>Solve</Text>
           </>
         )}
-      </AnimatedPressable>
+      </Pressable>
     </View>
   );
 
@@ -675,60 +561,84 @@ export default function SolveScreen() {
       <SafeAreaView style={[s.safe, { backgroundColor: t.BG }]}>
         <View style={s.wideContainer}>
 
-          {/* Left 62%: cube */}
+          {/* Left 60%: cube */}
           <View style={[s.cubePanel, { backgroundColor: t.BG }]}>
             <Text
-              style={[s.scrambleLine, { color: t.MUTED, marginBottom: 8, alignSelf: "center" }]}
+              style={[s.scrambleLine, { color: t.MUTED }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              {scramble || "Tap any move chip to scramble, then Solve"}
+              {scramble || "Tap Solve to begin"}
             </Text>
             {renderCubeCard(Math.min(windowWidth * 0.55, 560))}
-            <View style={s.hints}>
-              <View style={s.hintItem}>
-                <View style={[s.hintDot, { backgroundColor: t.MUTED }]} />
-                <Text style={[s.hintTxt, { color: t.MUTED }]}>Drag to rotate</Text>
-              </View>
-              <View style={s.hintItem}>
-                <View style={[s.hintDot, { backgroundColor: t.MUTED }]} />
-                <Text style={[s.hintTxt, { color: t.MUTED }]}>Scroll to zoom</Text>
-              </View>
-            </View>
-            {/* Solved flash (wide — overlays cube panel) */}
-            <Animated.View style={[s.solvedOverlay, solvedAnim]} pointerEvents="none">
-              <Text style={[s.solvedOverlayTxt, { color: t.GREEN }]}>Solved!</Text>
-            </Animated.View>
           </View>
 
-          {/* Right 38%: controls */}
+          {/* Right 40%: controls */}
           <View style={[s.controlPanel, { backgroundColor: t.CARD, borderLeftColor: t.BORDER }]}>
             <ScrollView contentContainerStyle={s.controlScroll} showsVerticalScrollIndicator={false}>
-              <View style={s.panelHeader}>
-                <Text style={[s.panelTitle, { color: t.TEXT }]}>3D Solver</Text>
-                <Text style={[s.panelSub, { color: t.MUTED }]}>Step-by-step interactive visualization</Text>
+              <Text style={[s.panelTitle, { color: t.TEXT }]}>3D Cube Guide</Text>
+              <Text
+                style={[s.scrambleLine, { color: t.MUTED }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {scramble || "Tap Solve to begin"}
+              </Text>
+              {renderSolverBanner()}
+              {renderStats()}
+              <View style={{ marginTop: 14 }}>
+                <PlaybackCard
+                  playbackMode={playbackMode}
+                  stepDelay={stepDelay}
+                  step={step}
+                  moves={moves}
+                  playing={playing}
+                  solving={solving}
+                  isAnimating={isAnimating}
+                  onModeChange={setPlaybackMode}
+                  onDelayChange={setStepDelay}
+                  onPlay={handlePlay}
+                  onPause={handlePause}
+                  onNext={handleNext}
+                  onPrev={handlePrev}
+                />
               </View>
-              {!solverReady && (
-                <View style={[s.solverBanner, { backgroundColor: t.CARD_ALT }]}>
-                  <ActivityIndicator size="small" color={t.ACCENT} />
-                  <Text style={[s.solverBannerTxt, { color: t.MUTED }]}>Solver initializing...</Text>
+              {moves.length > 0 && (
+                <View style={{ marginTop: 14 }}>
+                  <AlgorithmChips
+                    moves={moves}
+                    step={step}
+                    isAnimating={isAnimating}
+                    onChipPress={handleChipPress}
+                    onMovePress={handleMovePress}
+                  />
                 </View>
               )}
-              {renderStats()}
-              {renderPlayback()}
-              {renderAlgorithm()}
-              {renderNotation()}
-              {renderActions()}
+              {moves.length === 0 && (
+                <View style={{ marginTop: 14 }}>
+                  <AlgorithmChips
+                    moves={moves}
+                    step={step}
+                    isAnimating={isAnimating}
+                    onChipPress={handleChipPress}
+                    onMovePress={handleMovePress}
+                  />
+                </View>
+              )}
+              {renderActionButton()}
             </ScrollView>
           </View>
 
         </View>
 
-        {/* Confetti + "Solved!" overlay (wide) */}
+        {/* Confetti + "Solved!" overlay */}
         <ConfettiEffect visible={showConfetti} onComplete={() => setShowConfetti(false)} />
         {showConfetti && (
-          <Animated.View style={[s.solvedTextOverlay, overlayAnim]} pointerEvents="none">
-            <Text style={[s.solvedTextBig, { color: t.GREEN }]}>Solved!</Text>
+          <Animated.View
+            style={[s.solvedTextOverlay, { opacity: overlayOpacity, transform: [{ scale: overlayScale }] }]}
+            pointerEvents="none"
+          >
+            <Text style={[s.solvedTextBig, { color: "#009B48" }]}>Solved!</Text>
           </Animated.View>
         )}
 
@@ -744,46 +654,68 @@ export default function SolveScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        {/* Solver warm-up banner */}
-        {!solverReady && (
-          <View style={[s.solverBanner, { backgroundColor: t.CARD }]}>
-            <ActivityIndicator size="small" color={t.ACCENT} />
-            <Text style={[s.solverBannerTxt, { color: t.MUTED }]}>Solver initializing...</Text>
-          </View>
-        )}
-
-        {/* Header row with solved flash */}
-        <View style={s.mobileHeader}>
-          <Text style={[s.title, { color: t.TEXT }]}>3D Solver</Text>
-          <Animated.View style={solvedAnim}>
-            <Text style={[s.solvedBadge, { color: t.GREEN }]}>
-              {solved ? "Solved!" : ""}
-            </Text>
-          </Animated.View>
-        </View>
-
-        {/* Scramble display */}
+        {/* Header */}
+        <Text style={[s.title, { color: t.TEXT }]}>3D Cube Guide</Text>
         <Text
           style={[s.scrambleLine, { color: t.MUTED }]}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {scramble || "Tap any move chip to scramble, then Solve"}
+          {scramble || "Tap Solve to begin"}
         </Text>
 
+        {/* Cube card */}
         {renderCubeCard(260)}
+
+        {/* Stats row */}
         {renderStats()}
-        {renderPlayback()}
-        {renderAlgorithm()}
-        {renderNotation()}
-        {renderActions()}
+
+        {/* Solver banner */}
+        {renderSolverBanner()}
+
+        {/* Playback card */}
+        <View style={{ marginTop: 14 }}>
+          <PlaybackCard
+            playbackMode={playbackMode}
+            stepDelay={stepDelay}
+            step={step}
+            moves={moves}
+            playing={playing}
+            solving={solving}
+            isAnimating={isAnimating}
+            onModeChange={setPlaybackMode}
+            onDelayChange={setStepDelay}
+            onPlay={handlePlay}
+            onPause={handlePause}
+            onNext={handleNext}
+            onPrev={handlePrev}
+          />
+        </View>
+
+        {/* Algorithm chips */}
+        <View style={{ marginTop: 14 }}>
+          <AlgorithmChips
+            moves={moves}
+            step={step}
+            isAnimating={isAnimating}
+            onChipPress={handleChipPress}
+            onMovePress={handleMovePress}
+          />
+        </View>
+
+        {/* Action button */}
+        {renderActionButton()}
+
       </ScrollView>
 
-      {/* Confetti + "Solved!" overlay (mobile) */}
+      {/* Confetti + "Solved!" overlay (outside ScrollView, absolute) */}
       <ConfettiEffect visible={showConfetti} onComplete={() => setShowConfetti(false)} />
       {showConfetti && (
-        <Animated.View style={[s.solvedTextOverlay, overlayAnim]} pointerEvents="none">
-          <Text style={[s.solvedTextBig, { color: t.GREEN }]}>Solved!</Text>
+        <Animated.View
+          style={[s.solvedTextOverlay, { opacity: overlayOpacity, transform: [{ scale: overlayScale }] }]}
+          pointerEvents="none"
+        >
+          <Text style={[s.solvedTextBig, { color: "#009B48" }]}>Solved!</Text>
         </Animated.View>
       )}
 
@@ -796,190 +728,168 @@ export default function SolveScreen() {
 const s = StyleSheet.create({
   safe: { flex: 1 },
 
-  // Solver banner
-  solverBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
+  // Scroll / layout
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 120,
   },
-  solverBannerTxt: { fontSize: 13 },
 
-  // Mobile
-  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
-  mobileHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  title:        { fontSize: 26, fontWeight: "700" },
-  solvedBadge:  { fontSize: 18, fontWeight: "800" },
-  scrambleLine: { fontSize: 11, fontFamily: "SpaceMono", marginBottom: 8 },
-
-  // Wide layout
-  wideContainer: { flex: 1, flexDirection: "row" },
-  cubePanel: {
-    width: "62%",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    position: "relative",
-  },
-  controlPanel: { width: "38%", borderLeftWidth: 1 },
-  controlScroll: { padding: 20, paddingBottom: 40 },
-  panelHeader:   { marginBottom: 16 },
-  panelTitle:    { fontSize: 22, fontWeight: "700", marginBottom: 4 },
-  panelSub:      { fontSize: 12 },
-
-  // Hints (wide)
-  hints:   { flexDirection: "row", gap: 20, marginTop: 12 },
-  hintItem:{ flexDirection: "row", alignItems: "center", gap: 6 },
-  hintDot: { width: 5, height: 5, borderRadius: 3 },
-  hintTxt: { fontSize: 11 },
-
-  // Solved overlay (wide)
-  solvedOverlay: {
-    position: "absolute",
-    top: 28,
-    right: 28,
-  },
-  solvedOverlayTxt: { fontSize: 28, fontWeight: "800" },
-
-  // Confetti "Solved!" big text (both layouts — absolute centred)
-  solvedTextOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex:         998,
-    alignItems:     "center",
-    justifyContent: "center",
-    top:            "35%" as any,
-    bottom:         "35%" as any,
-    pointerEvents:  "none",
-  },
-  solvedTextBig: {
-    fontSize:   42,
+  // Header
+  title: {
+    fontSize: 34,
     fontWeight: "800",
-    textShadowColor:   "rgba(0,0,0,0.35)",
-    textShadowOffset:  { width: 0, height: 2 },
-    textShadowRadius:  6,
+    letterSpacing: -0.5,
+    marginTop: 16,
+  },
+  scrambleLine: {
+    fontSize: 12,
+    fontFamily: "monospace",
+    marginTop: 4,
   },
 
   // Cube card
   cubeCard: {
-    borderRadius: 16,
+    borderRadius: 24,
     borderWidth: 1,
     overflow: "hidden",
-    marginBottom: 12,
-    width: "100%",
+    marginTop: 16,
   },
   cubeStrip: {
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
   },
-  stripLeft:  { flexDirection: "row", alignItems: "center", gap: 6 },
-  stripDot:   { width: 8, height: 8, borderRadius: 4 },
-  stripBadge: { fontSize: 11, fontWeight: "700", letterSpacing: 0.8 },
-  stripStep:  { fontSize: 13, fontWeight: "700" },
-  progressTrack: { height: 3 },
-  progressFill:  { height: 3 },
+  statusBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusTxt: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  stepCounter: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  progressTrack: {
+    height: 3,
+  },
+  progressFill: {
+    height: 3,
+  },
 
   // Stats row
-  statsRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
-  statBox: {
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 14,
+  },
+  statCard: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     paddingVertical: 12,
     paddingHorizontal: 10,
     alignItems: "center",
   },
-  statVal: { fontSize: 18, fontWeight: "700" },
-  statLbl: { fontSize: 10, marginTop: 2, letterSpacing: 0.5 },
+  statLabel: {
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: "800",
+  },
 
-  // Generic card
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 12 },
-  cardLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 12 },
+  // Solver banner
+  solverBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 14,
+  },
+  solverBannerTxt: {
+    fontSize: 13,
+  },
 
-  // Mode toggle
-  modeRow:    { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-  modeHint:   { fontSize: 13 },
-  modeToggle: { flexDirection: "row", borderRadius: 8, borderWidth: 1, overflow: "hidden" },
-  modePill:   { paddingHorizontal: 16, paddingVertical: 6 },
-  modePillTxt:{ fontSize: 12 },
+  // Action button
+  actionWrapper: {
+    marginTop: 14,
+  },
+  solveBtn: {
+    height: 56,
+    borderRadius: 28,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  solveBtnTxt: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
+  },
 
-  // Delay
-  delayRow:   { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  delayLabel: { fontSize: 13 },
-  delayBadge: { borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4, overflow: "hidden" },
-  delayValue: { fontSize: 13, fontWeight: "700" },
-  sliderWrap: { marginBottom: 12 },
-  sliderLabels: { flexDirection: "row", justifyContent: "space-between", marginTop: 4 },
-  sliderLbl:  { fontSize: 10 },
-  nativeDelayRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 12 },
-  delayBtn:   { width: 36, height: 36, borderRadius: 18, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  delayBtnTxt:{ fontSize: 18, fontWeight: "700" },
-  delayCenter:{ fontSize: 14, fontWeight: "700", minWidth: 80, textAlign: "center" },
+  // Solved overlay
+  solvedTextOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 998,
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+  } as any,
+  solvedTextBig: {
+    fontSize: 42,
+    fontWeight: "900",
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
 
-  // Transport controls
-  transportRow: { flexDirection: "row", gap: 8 },
-  transportBtn: {
+  // Wide layout
+  wideContainer: {
     flex: 1,
     flexDirection: "row",
-    alignItems: "center",
+  },
+  cubePanel: {
+    width: "60%",
     justifyContent: "center",
-    gap: 4,
-    paddingVertical: 11,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  transportTxt: { fontSize: 13, fontWeight: "600" },
-  playBtn: {
-    flex: 1.5,
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 11,
-    borderRadius: 10,
+    padding: 24,
+    position: "relative",
   },
-  playBtnTxt: { fontSize: 14, fontWeight: "700", color: "#000040" },
-  dimmed: { opacity: 0.35 },
-
-  // Algorithm chips
-  chips:      { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  algChip:    { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 7, borderWidth: 1 },
-  algChipTxt: { fontSize: 12, fontFamily: "SpaceMono" },
-
-  // Notation guide
-  notationGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  notationChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
+  controlPanel: {
+    width: "40%",
+    borderLeftWidth: 1,
   },
-  notationDot:   { width: 10, height: 10, borderRadius: 5 },
-  notationLabel: { fontSize: 13, fontWeight: "700", fontFamily: "SpaceMono" },
-
-  // Action row
-  actionRow: { marginBottom: 4 },
-  solveBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderRadius: 14,
-    paddingVertical: 16,
-    minHeight: 52,
+  controlScroll: {
+    padding: 20,
+    paddingBottom: 40,
   },
-  solveBtnTxt: { fontSize: 15, fontWeight: "700", color: "#000040" },
+  panelTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
 });

@@ -27,7 +27,7 @@ export const LIGHT = {
   TEXT:      '#0A0A0A',
   MUTED:     '#6B6B6B',
   HIGHLIGHT: '#5B4FCF',   // rich violet — primary CTA
-  ACCENT:    '#0A0A0A',   // black — active nav pill
+  ACCENT:    '#7165DA',   // medium violet — secondary interactive
   GREEN:     '#009B48',
   RED:       '#B71234',
   ORANGE:    '#FF5800',

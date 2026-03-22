@@ -9,12 +9,8 @@ import {
   useWindowDimensions,
   ActivityIndicator,
   Platform,
+  Animated,
 } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -30,20 +26,11 @@ import { validateCubeState } from "@/lib/cubeState";
 import { useCubeStore } from "@/stores/cubeStore";
 import { useTheme } from "@/lib/theme";
 
-// ── Types & module constants ──────────────────────────────────────────────────
+// ── Types & constants ─────────────────────────────────────────────────────────
 
 type Phase = "idle" | "orientation" | "camera" | "review" | "validate" | "manual";
 
 const ALL_COLORS: CubeColor[] = ["white", "red", "green", "yellow", "orange", "blue"];
-
-const SCAN_INSTRUCTIONS: Record<FaceName, string> = {
-  U: "Hold White face toward camera · Green face on top",
-  F: "Hold Green face toward camera · White face on top",
-  R: "Hold Red face toward camera · White face on top",
-  B: "Hold Blue face toward camera · White face on top",
-  L: "Hold Orange face toward camera · White face on top",
-  D: "Hold Yellow face toward camera · Green face on top",
-};
 
 const FACE_HEX: Record<FaceName, string> = {
   U: "#EEEEEE",
@@ -54,11 +41,18 @@ const FACE_HEX: Record<FaceName, string> = {
   B: "#0046AD",
 };
 
-const shadow = Platform.select({
-  ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 6 },
+const cardShadow = Platform.select({
+  ios: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 8 },
   android: { elevation: 4 },
   default: {},
 }) as object;
+
+function hexOpacity(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 // ── AnimatedPressable ─────────────────────────────────────────────────────────
 
@@ -73,54 +67,62 @@ function AnimatedPressable({
   children: React.ReactNode;
   disabled?: boolean;
 }) {
-  const scale   = useSharedValue(1);
-  const opacity = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-  const flat = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
+  const scale   = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const flat    = StyleSheet.flatten(style as any) as Record<string, any> | undefined;
+
+  const pressIn = () =>
+    Animated.parallel([
+      Animated.timing(scale,   { toValue: 0.96, duration: 100, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0.85, duration: 100, useNativeDriver: true }),
+    ]).start();
+
+  const pressOut = () =>
+    Animated.parallel([
+      Animated.timing(scale,   { toValue: 1, duration: 100, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
+    ]).start();
+
   return (
     <Pressable
-      onPressIn={() => {
-        scale.value   = withTiming(0.95, { duration: 120 });
-        opacity.value = withTiming(0.8,  { duration: 120 });
-      }}
-      onPressOut={() => {
-        scale.value   = withTiming(1, { duration: 120 });
-        opacity.value = withTiming(1, { duration: 120 });
-      }}
+      onPressIn={pressIn}
+      onPressOut={pressOut}
       onPress={onPress}
       disabled={disabled}
-      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf }}
+      style={{ flex: flat?.flex, alignSelf: flat?.alignSelf, width: flat?.width }}
     >
-      <Animated.View style={[style, animStyle]}>{children}</Animated.View>
+      <Animated.View style={[style, { transform: [{ scale }], opacity }]}>
+        {children}
+      </Animated.View>
     </Pressable>
   );
 }
 
 // ── ColorCell ─────────────────────────────────────────────────────────────────
 
-function ColorCell({ color, onPress }: { color: CubeColor; onPress: () => void }) {
-  const t         = useTheme();
-  const scale     = useSharedValue(1);
-  const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+function ColorCell({ color, onPress, size }: { color: CubeColor; onPress: () => void; size: number }) {
+  const t     = useTheme();
+  const scale = useRef(new Animated.Value(1)).current;
   return (
     <Pressable
-      onPressIn={() => { scale.value = withTiming(0.92, { duration: 80 }); }}
-      onPressOut={() => { scale.value = withTiming(1,    { duration: 80 }); }}
+      onPressIn={() => Animated.timing(scale, { toValue: 0.92, duration: 80, useNativeDriver: true }).start()}
+      onPressOut={() => Animated.timing(scale, { toValue: 1, duration: 80, useNativeDriver: true }).start()}
       onPress={onPress}
     >
       <Animated.View
-        style={[s.colorCell, { backgroundColor: CUBE_COLORS[color], borderColor: t.BORDER }, animStyle]}
+        style={[
+          s.colorCell,
+          { width: size, height: size, backgroundColor: CUBE_COLORS[color], borderColor: t.BORDER },
+          { transform: [{ scale }] },
+        ]}
       />
     </Pressable>
   );
 }
 
-// ── FacePills ─────────────────────────────────────────────────────────────────
+// ── FaceProgressStrip ─────────────────────────────────────────────────────────
 
-function FacePills({
+function FaceProgressStrip({
   faceIdx,
   scanned,
 }: {
@@ -139,12 +141,27 @@ function FacePills({
             style={[
               s.facePill,
               {
-                borderColor: isCurrent || isDone ? FACE_HEX[face] : t.BORDER,
-                backgroundColor: isDone ? FACE_HEX[face] : "transparent",
+                borderColor: isDone
+                  ? FACE_HEX[face]
+                  : isCurrent
+                  ? t.HIGHLIGHT
+                  : t.BORDER,
+                backgroundColor: isDone
+                  ? FACE_HEX[face]
+                  : isCurrent
+                  ? hexOpacity(t.HIGHLIGHT, 0.12)
+                  : "transparent",
               },
             ]}
           >
-            <Text style={[s.facePillTxt, { color: isDone ? "#111" : t.TEXT }]}>{face}</Text>
+            <Text
+              style={[
+                s.facePillTxt,
+                { color: isDone ? "#111" : isCurrent ? t.HIGHLIGHT : t.MUTED },
+              ]}
+            >
+              {face}
+            </Text>
           </View>
         );
       })}
@@ -187,7 +204,7 @@ function PDFStrip({
               s.stripSlot,
               {
                 backgroundColor: t.CARD,
-                borderColor: isProblem ? t.RED : isCurrent ? t.ACCENT : t.BORDER,
+                borderColor: isProblem ? t.RED : isCurrent ? t.HIGHLIGHT : t.BORDER,
                 borderWidth: isCurrent || isProblem ? 2 : 1,
               },
             ]}
@@ -202,7 +219,9 @@ function PDFStrip({
                 ]}
               />
             )}
-            <Text style={s.stripLabel}>{face}</Text>
+            <View style={s.stripLabelWrap}>
+              <Text style={s.stripLabel}>{face}</Text>
+            </View>
           </Pressable>
         );
       })}
@@ -213,16 +232,20 @@ function PDFStrip({
 // ── ScanScreen ────────────────────────────────────────────────────────────────
 
 export default function ScanScreen() {
-  const t               = useTheme();
-  const { width }       = useWindowDimensions();
-  const CAM_SIZE        = Math.min(width - 40, 320);
-  const router          = useRouter();
+  const t                = useTheme();
+  const { width }        = useWindowDimensions();
+  const CAM_SIZE         = width - 40;
+  const GRID_GAP         = 8;
+  const GRID_CELL        = Math.floor((width - 40 - GRID_GAP * 2) / 3);
+  const GRID_WIDTH       = GRID_CELL * 3 + GRID_GAP * 2;
+  const router           = useRouter();
   const { setCubeState } = useCubeStore();
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
   const [phase,        setPhase]        = useState<Phase>("idle");
+  const [idleMode,     setIdleMode]     = useState<"camera" | "manual">("camera");
   const [faceIdx,      setFaceIdx]      = useState(0);
   const [reviewingIdx, setReviewingIdx] = useState(0);
   const [detected,     setDetected]     = useState<CubeColor[]>(Array(9).fill("white"));
@@ -289,7 +312,6 @@ export default function ScanScreen() {
     setScanned(updatedScanned);
 
     if (reviewingIdx === faceIdx) {
-      // Confirming a freshly scanned face
       if (faceIdx < 5) {
         const next = faceIdx + 1;
         setFaceIdx(next);
@@ -300,7 +322,6 @@ export default function ScanScreen() {
         runValidation(updatedScanned);
       }
     } else {
-      // Re-confirming a past face
       const allDone = Object.keys(updatedScanned).length === 6;
       if (allDone) {
         runValidation(updatedScanned);
@@ -312,14 +333,14 @@ export default function ScanScreen() {
     }
   };
 
-  const runValidation = (s: Partial<Record<FaceName, CubeColor[]>>) => {
+  const runValidation = (st: Partial<Record<FaceName, CubeColor[]>>) => {
     const fullState: CubeState = {
-      U: (s.U ?? SOLVED_STATE.U) as FaceState,
-      R: (s.R ?? SOLVED_STATE.R) as FaceState,
-      F: (s.F ?? SOLVED_STATE.F) as FaceState,
-      D: (s.D ?? SOLVED_STATE.D) as FaceState,
-      L: (s.L ?? SOLVED_STATE.L) as FaceState,
-      B: (s.B ?? SOLVED_STATE.B) as FaceState,
+      U: (st.U ?? SOLVED_STATE.U) as FaceState,
+      R: (st.R ?? SOLVED_STATE.R) as FaceState,
+      F: (st.F ?? SOLVED_STATE.F) as FaceState,
+      D: (st.D ?? SOLVED_STATE.D) as FaceState,
+      L: (st.L ?? SOLVED_STATE.L) as FaceState,
+      B: (st.B ?? SOLVED_STATE.B) as FaceState,
     };
     const { valid, errors } = validateCubeState(fullState);
     setValErrors(errors);
@@ -392,37 +413,110 @@ export default function ScanScreen() {
 
         {/* ── IDLE ──────────────────────────────────────────────────── */}
         {phase === "idle" && (
-          <>
+          <View>
             <Text style={[s.title, { color: t.TEXT }]}>Scan Your Cube</Text>
-            <Text style={[s.subtitle, { color: t.MUTED }]}>
-              Point your camera at each face one at a time
-            </Text>
-            <View style={s.idleButtons}>
-              <AnimatedPressable
-                onPress={handleStart}
-                style={[s.primaryBtn, { backgroundColor: t.ACCENT }]}
+            <Text style={[s.subtitle, { color: t.MUTED }]}>Choose how to input your cube state</Text>
+
+            {/* Mode selector */}
+            <View style={[s.modeRow, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}>
+              <Pressable
+                style={[s.modeTab, idleMode === "camera" && [s.modeTabActive, { backgroundColor: t.CARD }]]}
+                onPress={() => setIdleMode("camera")}
               >
-                <Ionicons name="camera-outline" size={20} color="#000040" />
-                <Text style={[s.primaryBtnTxt, { color: "#000040" }]}>Start Camera Scan</Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                onPress={() => setPhase("manual")}
-                style={[s.secondaryBtn, { backgroundColor: t.CARD, borderColor: t.BORDER }]}
+                <Ionicons name="camera-outline" size={16} color={idleMode === "camera" ? t.HIGHLIGHT : t.MUTED} />
+                <Text style={[s.modeTabTxt, { color: idleMode === "camera" ? t.HIGHLIGHT : t.MUTED }]}>
+                  Camera
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[s.modeTab, idleMode === "manual" && [s.modeTabActive, { backgroundColor: t.CARD }]]}
+                onPress={() => setIdleMode("manual")}
               >
-                <Ionicons name="grid-outline" size={20} color={t.TEXT} />
-                <Text style={[s.secondaryBtnTxt, { color: t.TEXT }]}>Enter Manually</Text>
-              </AnimatedPressable>
+                <Ionicons name="grid-outline" size={16} color={idleMode === "manual" ? t.HIGHLIGHT : t.MUTED} />
+                <Text style={[s.modeTabTxt, { color: idleMode === "manual" ? t.HIGHLIGHT : t.MUTED }]}>
+                  Manual
+                </Text>
+              </Pressable>
             </View>
-          </>
+
+            {/* Camera mode card */}
+            {idleMode === "camera" && (
+              <View style={[s.idleCard, cardShadow, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+                <View
+                  style={[
+                    s.idleIconRing,
+                    {
+                      backgroundColor: hexOpacity(t.HIGHLIGHT, 0.10),
+                      borderColor: hexOpacity(t.HIGHLIGHT, 0.35),
+                    },
+                  ]}
+                >
+                  <Ionicons name="camera" size={36} color={t.HIGHLIGHT} />
+                </View>
+                <Text style={[s.idleCardTitle, { color: t.TEXT }]}>Camera Scan</Text>
+                <Text style={[s.idleCardDesc, { color: t.MUTED }]}>
+                  Scan all 6 faces automatically using your camera with AI color detection.
+                </Text>
+                <View style={s.chipsRow}>
+                  {["6 scans", "Auto-detect", "~2 min"].map((chip) => (
+                    <View key={chip} style={[s.chip, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}>
+                      <Text style={[s.chipTxt, { color: t.MUTED }]}>{chip}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Manual mode card */}
+            {idleMode === "manual" && (
+              <View style={[s.idleCard, cardShadow, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+                <View
+                  style={[
+                    s.idleIconRing,
+                    {
+                      backgroundColor: hexOpacity(t.TEXT, 0.06),
+                      borderColor: hexOpacity(t.TEXT, 0.18),
+                    },
+                  ]}
+                >
+                  <Ionicons name="grid" size={36} color={t.TEXT} />
+                </View>
+                <Text style={[s.idleCardTitle, { color: t.TEXT }]}>Manual Input</Text>
+                <Text style={[s.idleCardDesc, { color: t.MUTED }]}>
+                  Tap each sticker on the cube net to set its color manually.
+                </Text>
+                <View style={s.chipsRow}>
+                  {["54 stickers", "Full control", "No camera"].map((chip) => (
+                    <View key={chip} style={[s.chip, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}>
+                      <Text style={[s.chipTxt, { color: t.MUTED }]}>{chip}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* CTA */}
+            <AnimatedPressable
+              onPress={idleMode === "camera" ? handleStart : () => setPhase("manual")}
+              style={[s.idleCTA, { backgroundColor: t.HIGHLIGHT }]}
+            >
+              <Ionicons
+                name={idleMode === "camera" ? "camera" : "grid"}
+                size={20}
+                color={t.isDark ? "#000" : "#fff"}
+              />
+              <Text style={[s.idleCTATxt, { color: t.isDark ? "#000" : "#fff" }]}>
+                {idleMode === "camera" ? "Start Camera Scan" : "Enter Manually"}
+              </Text>
+            </AnimatedPressable>
+          </View>
         )}
 
         {/* ── MANUAL ────────────────────────────────────────────────── */}
         {phase === "manual" && (
-          <>
+          <View>
             <Text style={[s.title, { color: t.TEXT }]}>Manual Input</Text>
-            <Text style={[s.subtitle, { color: t.MUTED }]}>
-              Tap each sticker to cycle its color
-            </Text>
+            <Text style={[s.subtitle, { color: t.MUTED }]}>Tap each sticker to cycle its color</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.netScroll}>
               <CubeNet state={manualState} editable onCellChange={handleManualCell} />
             </ScrollView>
@@ -437,89 +531,113 @@ export default function ScanScreen() {
                 onPress={() => setPhase("idle")}
                 style={[s.secondaryAction, { backgroundColor: t.CARD, borderColor: t.BORDER }]}
               >
+                <Ionicons name="arrow-back-outline" size={16} color={t.TEXT} />
                 <Text style={[s.secondaryActionTxt, { color: t.TEXT }]}>Back</Text>
               </AnimatedPressable>
               <AnimatedPressable
                 onPress={handleManualSubmit}
-                style={[s.primaryAction, { backgroundColor: t.ACCENT, flex: 2 }]}
+                style={[s.primaryAction, { backgroundColor: t.HIGHLIGHT, flex: 2 }]}
               >
-                <Text style={[s.primaryActionTxt, { color: "#000040" }]}>Solve This Cube</Text>
+                <Text style={[s.primaryActionTxt, { color: t.isDark ? "#000" : "#fff" }]}>
+                  Solve This Cube
+                </Text>
               </AnimatedPressable>
             </View>
-          </>
+          </View>
         )}
 
         {/* ── ORIENTATION ───────────────────────────────────────────── */}
         {phase === "orientation" && (
-          <>
+          <View>
             <Text style={[s.title, { color: t.TEXT }]}>Get Ready</Text>
-            <FacePills faceIdx={faceIdx} scanned={scanned} />
+            <FaceProgressStrip faceIdx={faceIdx} scanned={scanned} />
             <OrientationGuide currentFace={currentFace} onReady={handleOrientationReady} />
-          </>
+          </View>
         )}
 
         {/* ── CAMERA ────────────────────────────────────────────────── */}
         {phase === "camera" && (
-          <>
-            <FacePills faceIdx={faceIdx} scanned={scanned} />
+          <View>
+            <FaceProgressStrip faceIdx={faceIdx} scanned={scanned} />
+
+            {/* Face badge */}
             <View style={s.badgeRow}>
-              <View style={[s.faceBadge, { backgroundColor: t.CARD, borderColor: t.BORDER }]}>
+              <View
+                style={[
+                  s.faceBadge,
+                  {
+                    backgroundColor: hexOpacity(FACE_HEX[reviewingFace], 0.15),
+                    borderColor: FACE_HEX[reviewingFace],
+                  },
+                ]}
+              >
                 <View style={[s.faceDot, { backgroundColor: FACE_HEX[reviewingFace] }]} />
                 <Text style={[s.faceBadgeTxt, { color: t.TEXT }]}>{FACE_LABELS[reviewingFace]}</Text>
                 <Text style={[s.faceCount, { color: t.MUTED }]}>{reviewingIdx + 1} / 6</Text>
               </View>
             </View>
-            <View style={s.camWrap}>
+
+            {/* Full-width camera */}
+            <View style={[s.camWrap, { borderRadius: 20, overflow: "hidden" }]}>
               <CameraViewComponent size={CAM_SIZE} cameraRef={cameraRef} />
             </View>
+
+            {/* Capture controls */}
             <View style={s.camControls}>
               <Pressable onPress={() => setPhase("idle")} style={s.cancelPressable}>
                 <Text style={[s.cancelTxt, { color: t.MUTED }]}>Cancel</Text>
               </Pressable>
               <Pressable
-                style={[s.captureBtn, { borderColor: t.isDark ? "#fff" : t.TEXT }, isCapturing && { opacity: 0.5 }]}
+                style={[
+                  s.captureBtn,
+                  { borderColor: t.isDark ? "#fff" : t.TEXT },
+                  isCapturing && { opacity: 0.5 },
+                ]}
                 onPress={handleCapture}
                 disabled={isCapturing}
               >
-                {isCapturing
-                  ? <ActivityIndicator color={t.isDark ? "#fff" : t.TEXT} size="large" />
-                  : <View style={[s.captureInner, { backgroundColor: t.isDark ? "#fff" : t.TEXT }]} />
-                }
+                {isCapturing ? (
+                  <ActivityIndicator color={t.isDark ? "#fff" : t.TEXT} size="large" />
+                ) : (
+                  <View style={[s.captureInner, { backgroundColor: t.isDark ? "#fff" : t.TEXT }]} />
+                )}
               </Pressable>
               <View style={{ width: 80 }} />
             </View>
-          </>
+          </View>
         )}
 
         {/* ── REVIEW ────────────────────────────────────────────────── */}
         {phase === "review" && (
-          <>
+          <View>
             <Text style={[s.title, { color: t.TEXT }]}>Check Colors</Text>
-            <Text style={[s.subtitle, { color: t.MUTED }]}>
-              Tap any square to correct its color
-            </Text>
+            <Text style={[s.subtitle, { color: t.MUTED }]}>Tap any square to correct its color</Text>
 
             {/* Top row: thumbnail + face info */}
             <View style={s.reviewTop}>
               {photos[reviewingFace] ? (
                 <Image source={{ uri: photos[reviewingFace] }} style={s.thumbnail} />
               ) : (
-                <View style={[s.thumbnail, { backgroundColor: t.CARD_ALT }]} />
+                <View
+                  style={[
+                    s.thumbnail,
+                    { backgroundColor: t.CARD_ALT, borderColor: t.BORDER, borderWidth: 1 },
+                  ]}
+                />
               )}
               <View style={s.reviewTopInfo}>
-                <Text style={[s.reviewFaceName, { color: t.TEXT }]}>
-                  {FACE_LABELS[reviewingFace]}
-                </Text>
-                <Text style={[s.reviewHint, { color: t.MUTED }]}>
-                  Tap a cell to{"\n"}cycle its color
-                </Text>
+                <View style={s.reviewBadge}>
+                  <View style={[s.faceDotLg, { backgroundColor: FACE_HEX[reviewingFace] }]} />
+                  <Text style={[s.reviewFaceName, { color: t.TEXT }]}>{FACE_LABELS[reviewingFace]}</Text>
+                </View>
+                <Text style={[s.reviewHint, { color: t.MUTED }]}>Tap a cell to cycle its color</Text>
               </View>
             </View>
 
             {/* 3×3 color grid */}
-            <View style={s.colorGrid}>
+            <View style={[s.colorGrid, { gap: GRID_GAP, width: GRID_WIDTH }]}>
               {detected.map((color, i) => (
-                <ColorCell key={i} color={color} onPress={() => cycleColor(i)} />
+                <ColorCell key={i} color={color} onPress={() => cycleColor(i)} size={GRID_CELL} />
               ))}
             </View>
 
@@ -534,6 +652,7 @@ export default function ScanScreen() {
               />
             </View>
 
+            {/* Actions */}
             <View style={s.rowGap}>
               <AnimatedPressable
                 onPress={handleRetake}
@@ -544,38 +663,54 @@ export default function ScanScreen() {
               </AnimatedPressable>
               <AnimatedPressable
                 onPress={handleConfirm}
-                style={[s.primaryAction, { backgroundColor: t.ACCENT }]}
+                style={[s.primaryAction, { backgroundColor: t.HIGHLIGHT }]}
               >
-                <Text style={[s.primaryActionTxt, { color: "#000040" }]}>
-                  {reviewingIdx < faceIdx
-                    ? "Save Changes"
-                    : faceIdx < 5
-                    ? "Confirm →"
-                    : "Finish →"}
+                <Text style={[s.primaryActionTxt, { color: t.isDark ? "#000" : "#fff" }]}>
+                  {reviewingIdx < faceIdx ? "Save Changes" : faceIdx < 5 ? "Confirm →" : "Finish →"}
                 </Text>
               </AnimatedPressable>
             </View>
-          </>
+          </View>
         )}
 
         {/* ── VALIDATE ──────────────────────────────────────────────── */}
         {phase === "validate" && (
-          <>
+          <View>
             <Text style={[s.title, { color: t.TEXT }]}>
               {valErrors.length === 0 ? "Cube Validated!" : "Check Your Cube"}
             </Text>
 
             {valErrors.length === 0 ? (
-              <View style={[s.resultCard, shadow, { backgroundColor: t.CARD, borderColor: t.GREEN }]}>
-                <Ionicons name="checkmark-circle" size={48} color={t.GREEN} />
+              <View style={[s.resultCard, cardShadow, { backgroundColor: t.CARD, borderColor: t.GREEN }]}>
+                <View
+                  style={[
+                    s.resultIconRing,
+                    {
+                      backgroundColor: hexOpacity(t.GREEN, 0.12),
+                      borderColor: hexOpacity(t.GREEN, 0.30),
+                    },
+                  ]}
+                >
+                  <Ionicons name="checkmark-circle" size={40} color={t.GREEN} />
+                </View>
                 <Text style={[s.resultTitle, { color: t.GREEN }]}>All 54 stickers valid</Text>
                 <Text style={[s.resultDesc, { color: t.MUTED }]}>
                   Your cube state is correct and ready to solve.
                 </Text>
               </View>
             ) : (
-              <View style={[s.resultCard, shadow, { backgroundColor: t.CARD, borderColor: t.RED }]}>
-                <Ionicons name="alert-circle" size={40} color={t.RED} />
+              <View style={[s.resultCard, cardShadow, { backgroundColor: t.CARD, borderColor: t.RED }]}>
+                <View
+                  style={[
+                    s.resultIconRing,
+                    {
+                      backgroundColor: hexOpacity(t.RED, 0.12),
+                      borderColor: hexOpacity(t.RED, 0.30),
+                    },
+                  ]}
+                >
+                  <Ionicons name="alert-circle" size={40} color={t.RED} />
+                </View>
                 <Text style={[s.resultTitle, { color: t.RED }]}>Problem Detected</Text>
                 {valErrors.slice(0, 3).map((err, i) => (
                   <Text key={i} style={[s.resultDesc, { color: t.MUTED }]}>{err}</Text>
@@ -586,6 +721,7 @@ export default function ScanScreen() {
               </View>
             )}
 
+            {/* PDF strip */}
             <View style={[s.stripWrap, { marginTop: 20 }]}>
               <PDFStrip
                 scanned={scanned}
@@ -596,12 +732,13 @@ export default function ScanScreen() {
               />
             </View>
 
-            {/* Primary CTA — full width, green, dominant */}
+            {/* Solve CTA */}
             {valErrors.length === 0 && (
               <AnimatedPressable
                 onPress={() => setTimeout(() => router.push("/(tabs)/solve"), 50)}
-                style={[s.solvePrimaryBtn, { backgroundColor: t.GREEN }]}
+                style={[s.solvePrimaryBtn, { backgroundColor: t.GREEN, width: "100%" }]}
               >
+                <Ionicons name="cube-outline" size={20} color="#fff" />
                 <Text style={[s.primaryActionTxt, { color: "#fff" }]}>Solve This Cube →</Text>
               </AnimatedPressable>
             )}
@@ -616,12 +753,12 @@ export default function ScanScreen() {
               </AnimatedPressable>
               <AnimatedPressable
                 onPress={handleEditScans}
-                style={[s.secondaryAction, { backgroundColor: t.CARD_ALT, borderColor: t.ACCENT }]}
+                style={[s.secondaryAction, { backgroundColor: t.CARD_ALT, borderColor: t.BORDER }]}
               >
                 <Text style={[s.secondaryActionTxt, { color: t.TEXT }]}>Edit Scans</Text>
               </AnimatedPressable>
             </View>
-          </>
+          </View>
         )}
 
       </ScrollView>
@@ -633,34 +770,66 @@ export default function ScanScreen() {
 
 const s = StyleSheet.create({
   safe:   { flex: 1 },
-  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 100 },
+  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
 
   title:    { fontSize: 26, fontWeight: "700", marginBottom: 6 },
   subtitle: { fontSize: 13, lineHeight: 20, marginBottom: 20 },
 
   // ── Idle
-  idleButtons:   { gap: 14, marginTop: 8 },
-  primaryBtn: {
+  modeRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    gap: 10,
-  },
-  primaryBtnTxt: { fontSize: 16, fontWeight: "700" },
-  secondaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
     borderWidth: 1,
+    padding: 4,
+    marginBottom: 14,
+  },
+  modeTab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  modeTabActive: {},
+  modeTabTxt: { fontSize: 14, fontWeight: "600" },
+
+  idleCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 14,
+  },
+  idleIconRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  idleCardTitle: { fontSize: 20, fontWeight: "700" },
+  idleCardDesc:  { fontSize: 13, lineHeight: 20, textAlign: "center" },
+  chipsRow:      { flexDirection: "row", gap: 8, flexWrap: "wrap", justifyContent: "center" },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipTxt: { fontSize: 12, fontWeight: "600" },
+  idleCTA: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingVertical: 16,
     gap: 10,
   },
-  secondaryBtnTxt: { fontSize: 16, fontWeight: "600" },
+  idleCTATxt: { fontSize: 16, fontWeight: "700" },
 
   // ── Manual
   netScroll: { marginVertical: 12 },
@@ -668,26 +837,26 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     padding: 12,
     marginTop: 12,
   },
   alertTxt: { fontSize: 13, flex: 1 },
 
-  // ── Face pills
+  // ── Face progress strip
   faceRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
   facePill: {
     flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 2,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1.5,
     alignItems: "center",
   },
   facePillTxt: { fontSize: 13, fontWeight: "700" },
 
   // ── Camera
-  badgeRow:   { alignItems: "center", marginBottom: 14 },
+  badgeRow: { alignItems: "center", marginBottom: 14 },
   faceBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -698,9 +867,10 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
   faceDot:      { width: 10, height: 10, borderRadius: 5 },
+  faceDotLg:    { width: 14, height: 14, borderRadius: 7 },
   faceBadgeTxt: { fontSize: 14, fontWeight: "700" },
   faceCount:    { fontSize: 12, marginLeft: 4 },
-  camWrap:      { alignSelf: "center", marginBottom: 24 },
+  camWrap:      { marginBottom: 24 },
   camControls: {
     flexDirection: "row",
     alignItems: "center",
@@ -719,11 +889,10 @@ const s = StyleSheet.create({
     height: 72,
     borderRadius: 36,
     borderWidth: 4,
-    borderColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
   },
-  captureInner: { width: 56, height: 56, borderRadius: 28, backgroundColor: "#fff" },
+  captureInner: { width: 56, height: 56, borderRadius: 28 },
 
   // ── Review
   reviewTop: {
@@ -732,26 +901,22 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  thumbnail:      { width: 80, height: 80, borderRadius: 10 },
-  reviewTopInfo:  { flex: 1 },
-  reviewFaceName: { fontSize: 18, fontWeight: "700", marginBottom: 6 },
+  thumbnail:      { width: 72, height: 72, borderRadius: 12 },
+  reviewTopInfo:  { flex: 1, gap: 8 },
+  reviewBadge:    { flexDirection: "row", alignItems: "center", gap: 8 },
+  reviewFaceName: { fontSize: 18, fontWeight: "700" },
   reviewHint:     { fontSize: 12, lineHeight: 18 },
 
   // ── Color grid
   colorGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    width: 228,
-    gap: 6,
     marginBottom: 24,
     alignSelf: "center",
   },
   colorCell: {
-    width: 68,
-    height: 68,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
   },
 
   // ── PDF strip
@@ -760,48 +925,48 @@ const s = StyleSheet.create({
   stripSlot: {
     width: 60,
     height: 80,
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "flex-end",
     paddingBottom: 4,
   },
-  stripLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#fff",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 4,
+  stripLabelWrap: {
+    backgroundColor: "rgba(0,0,0,0.45)",
     borderRadius: 4,
-    overflow: "hidden",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
+  stripLabel: { fontSize: 11, fontWeight: "700", color: "#fff" },
 
   // ── Validate
-  solvePrimaryBtn: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    borderRadius: 14,
-    marginTop: 16,
-  },
   resultCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1.5,
     padding: 24,
     alignItems: "center",
     gap: 12,
   },
+  resultIconRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   resultTitle: { fontSize: 20, fontWeight: "700" },
   resultDesc:  { fontSize: 13, textAlign: "center", lineHeight: 20 },
   resultHint:  { fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 4 },
-  solveBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    marginTop: 8,
+  solvePrimaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 16,
+    gap: 8,
   },
-  solveBtnTxt: { fontSize: 15, fontWeight: "700", color: "#fff" },
 
   // ── Shared action row
   rowGap: { flexDirection: "row", gap: 12 },
@@ -811,8 +976,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
     gap: 6,
   },
@@ -822,7 +987,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   primaryActionTxt: { fontSize: 15, fontWeight: "700" },
 });
