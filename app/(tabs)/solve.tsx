@@ -116,10 +116,17 @@ export default function SolveScreen() {
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
   const [stepDelay,    setStepDelay]    = useState(1000);
   const [isAnimating,  setIsAnimating]  = useState(false);
+  // Ref mirrors isAnimating for use in async callbacks — avoids stale closure reads
+  const isAnimatingRef = useRef(false);
 
   // ── Clear stale animation state on tab focus ──────────────────────────────────
   useFocusEffect(
     useCallback(() => {
+      scrambleQueueRef.current = null;
+      pendingScrambleRef.current = null;
+      chipMoveRef.current = null;
+      isAnimatingRef.current = false;
+      setPlaying(false);
       setActiveMove(null);
       setIsAnimating(false);
     }, [])
@@ -256,6 +263,7 @@ export default function SolveScreen() {
       }
       const physicsMove = parseMove(scrambleMoves[idx]);
       idx++;
+      isAnimatingRef.current = true;
       setIsAnimating(true);
       setActiveMove(physicsMove);
       scrambleQueueRef.current = applyNext;
@@ -312,8 +320,9 @@ export default function SolveScreen() {
   };
 
   const handleExecuteMove = (notation: string, isUndo = false, fromChip = false) => {
-    if (isAnimating) return;
+    if (isAnimatingRef.current) return;  // ref = always current, no stale closure
     if (fromChip) chipMoveRef.current = isUndo ? notation + "_undo" : notation;
+    isAnimatingRef.current = true;
     setIsAnimating(true);
     const physicsMove = parseMove(notation, isUndo);
     setActiveMove(physicsMove);
@@ -324,6 +333,7 @@ export default function SolveScreen() {
       // Scramble queue: unlock immediately so next move can start after 30ms
       const next = scrambleQueueRef.current;
       scrambleQueueRef.current = null;
+      isAnimatingRef.current = false;
       setIsAnimating(false);
       setActiveMove(null);
       setTimeout(next, 30);
@@ -331,6 +341,7 @@ export default function SolveScreen() {
     }
     // Delay unlock by 50ms — lets Three.js fully snap cubies before next input
     setTimeout(() => {
+      isAnimatingRef.current = false;
       setIsAnimating(false);
       setActiveMove(null);
     }, 50);

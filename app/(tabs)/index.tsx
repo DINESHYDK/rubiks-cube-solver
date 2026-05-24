@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -92,7 +92,7 @@ function QuickPill({
 
 // ── CubeCard ──────────────────────────────────────────────────────────────────
 
-const CubeCard = React.memo(({ onPress }: { onPress: () => void }) => {
+const CubeCard = React.memo(({ onPress, paused }: { onPress: () => void; paused: boolean }) => {
   const t         = useTheme();
   const cubeState = useCubeStore((s) => s.cubeState);
   const scale     = useRef(new Animated.Value(1)).current;
@@ -121,7 +121,13 @@ const CubeCard = React.memo(({ onPress }: { onPress: () => void }) => {
           { transform: [{ scale }], opacity },
         ]}
       >
-        <Cube3D height={220} cubeState={cubeState} autoRotate={false} />
+        <Cube3D
+          height={220}
+          cubeState={cubeState}
+          autoRotate={false}
+          paused={paused}
+          frameloop="demand"
+        />
         <View style={[s.cubeStrip, { borderTopColor: t.BORDER }]}>
           <Text style={[s.cubeStripLabel, { color: t.MUTED }]}>Your cube</Text>
           <Ionicons name="chevron-forward" size={16} color={t.MUTED} />
@@ -177,13 +183,16 @@ export default function HomeScreen() {
   const [bestTime,   setBestTime]   = useState<number | null>(null);
   const [stats,      setStats]      = useState<SessionStats | null>(null);
   const [lastSolve,  setLastSolve]  = useState<SolveRecord | null>(null);
+  const [isFocused,  setIsFocused]  = useState(true);
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
+      setIsFocused(true);
       loadSettings();
       getBestTime().then(setBestTime);
       getSessionStats().then(setStats);
       getSolveHistory().then((h) => setLastSolve(h.length > 0 ? h[0] : null));
+      return () => setIsFocused(false);
     }, [])
   );
 
@@ -213,7 +222,7 @@ export default function HomeScreen() {
         </View>
 
         {/* ── 2. CUBE CARD ───────────────────────────────────────────── */}
-        <CubeCard onPress={() => router.push("/(tabs)/solve")} />
+        <CubeCard onPress={() => router.push("/(tabs)/solve")} paused={!isFocused} />
 
         {/* ── 3. QUICK ACTIONS ───────────────────────────────────────── */}
         <View style={s.pillRow}>

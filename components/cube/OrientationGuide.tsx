@@ -121,12 +121,12 @@ const HIGHLIGHT_MAP: Record<FaceName, FaceName[]> = {
 // Fixed camera position per face — chosen so BOTH highlighted faces are clearly visible.
 // Camera always looks toward the origin (Three.js default).
 const CAMERA_POSITIONS: Record<FaceName, [number, number, number]> = {
-  U: [ 4,  6,  5],   // above + right + front → shows White top + Red right
-  F: [ 4,  4,  7],   // front + above + right  → shows Green front + White top
-  R: [ 7,  4,  4],   // right + above + front  → shows Red right  + White top
-  B: [-4,  4, -7],   // behind + above + left  → shows Blue back  + White top
-  L: [-7,  4,  4],   // left  + above + front  → shows Orange left + White top
-  D: [ 0, -6,  5],   // below + in front → shows Yellow bottom + Green front centered
+  U: [-3,  5,  7],   // left + above + front  → White faces cam, Red appears screen-RIGHT
+  F: [-2,  3,  8],   // left + above + front  → Green faces cam, Red appears screen-RIGHT
+  R: [ 7,  4,  4],   // right + above + front → shows Red right  + White top
+  B: [-4,  4, -7],   // behind + above + left → shows Blue back  + White top
+  L: [-7,  4,  4],   // left  + above + front → shows Orange left + White top
+  D: [ 0, -6,  5],   // below + in front      → Yellow bottom + Green front centered
 };
 
 const spacing     = 1.02;

@@ -109,6 +109,12 @@ function NavStack() {
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
+        name="landing"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="settings"
         options={{
           title: "Settings",
