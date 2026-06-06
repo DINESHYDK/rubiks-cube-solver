@@ -398,6 +398,10 @@ export default function Cube3D({
   const lastTouchRef  = useRef({ x: 0, y: 0 });
   const invalidateRef = useRef<(() => void) | null>(null);
 
+  useEffect(() => {
+    invalidateRef.current?.();
+  }, [cubeState]);
+
   const panResponder = useRef(
     PanResponder.create({
       // Strict animation lock: ignore gestures when a move animation is playing

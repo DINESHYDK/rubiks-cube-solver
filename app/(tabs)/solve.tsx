@@ -366,7 +366,15 @@ export default function SolveScreen() {
         }
         isManualScrambleRef.current = true;
         chipTappedRef.current = true;
-        setCubeState(stringToCubeState(cube.asString()));
+        const newState = stringToCubeState(cube.asString());
+        setCubeState(newState);
+        if (moves.length > 0) {
+          const sol = solveCubeState(newState);
+          setMoves(sol);
+          setCubeSnapshots(getIntermediateStatesFromState(newState, sol));
+          setStep(-1);
+          targetStepRef.current = -1;
+        }
       } catch (_) { /* ignore parse errors */ }
     } else {
       // Synchronize the logical cubeState from pre-computed snapshots
