@@ -13,7 +13,8 @@
       "resizeMode": "contain",
       "backgroundColor": "#000040"
     },
-    "newArchEnabled": false,
+    "newArchEnabled": true,
+    "jsEngine": "hermes",
     "ios": {
       "supportsTablet": true
     },
@@ -44,7 +45,9 @@
           "cameraPermission": "Allow Cube Master to access your camera to scan cube faces."
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-font",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true

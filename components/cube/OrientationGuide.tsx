@@ -53,6 +53,13 @@ declare global {
       roundedBoxGeometry: any;
     }
   }
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements {
+        roundedBoxGeometry: any;
+      }
+    }
+  }
 }
 
 import type { FaceName } from "@/types/cube";

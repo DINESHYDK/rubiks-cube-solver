@@ -12,7 +12,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { useColorScheme } from "@/components/useColorScheme";
-import { initSolver } from "@/lib/solver";
+import { initSolver, initSolverAsync } from "@/lib/solver";
 import { useTheme } from "@/lib/theme";
 import { ThemeModeProvider } from "@/lib/themeContext";
 import AppSplashScreen from "@/app/splash";
@@ -67,11 +67,9 @@ function RootLayoutNav() {
   useEffect(() => {
     const warmUp = async () => {
       try {
-        await new Promise<void>((resolve) => {
-          setTimeout(() => {
-            initSolver();
-            resolve();
-          }, 500);
+        const { InteractionManager } = require("react-native");
+        InteractionManager.runAfterInteractions(async () => {
+          await initSolverAsync();
         });
       } catch (e) {
         console.warn("[Solver] Pre-warm failed:", e);

@@ -14,6 +14,13 @@ declare global {
       roundedBoxGeometry: any;
     }
   }
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements {
+        roundedBoxGeometry: any;
+      }
+    }
+  }
 }
 
 // ── Colors ────────────────────────────────────────────────────────────────────

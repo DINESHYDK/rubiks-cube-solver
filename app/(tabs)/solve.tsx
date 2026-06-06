@@ -22,6 +22,7 @@ import {
   generateScramble,
   solveCubeState,
   getIntermediateStates,
+  getIntermediateStatesFromState,
   getScrambledState,
   isSolverReady,
 } from "@/lib/solver";
@@ -111,12 +112,11 @@ export default function SolveScreen() {
   const pendingScrambleRef   = useRef<string | null>(null);
   const chipMoveRef          = useRef<string | null>(null);
   const chipTappedRef        = useRef(false);
-
+  const targetStepRef        = useRef<number>(-1);
   const [cubeKey,      setCubeKey]      = useState(0);
   const [playbackMode, setPlaybackMode] = useState<"auto" | "manual">("auto");
   const [stepDelay,    setStepDelay]    = useState(1000);
   const [isAnimating,  setIsAnimating]  = useState(false);
-  // Ref mirrors isAnimating for use in async callbacks — avoids stale closure reads
   const isAnimatingRef = useRef(false);
 
   // ── Clear stale animation state on tab focus ──────────────────────────────────
@@ -126,6 +126,7 @@ export default function SolveScreen() {
       pendingScrambleRef.current = null;
       chipMoveRef.current = null;
       isAnimatingRef.current = false;
+      targetStepRef.current = -1;
       setPlaying(false);
       setActiveMove(null);
       setIsAnimating(false);
@@ -179,8 +180,9 @@ export default function SolveScreen() {
       try {
         const sol = solveCubeState(cubeState);
         setMoves(sol);
-        setCubeSnapshots([cubeState]);
+        setCubeSnapshots(getIntermediateStatesFromState(cubeState, sol));
         setStep(-1);
+        targetStepRef.current = -1;
         setTicks(0);
         setPlaying(false);
       } catch (e) {
@@ -209,7 +211,7 @@ export default function SolveScreen() {
   // ── Auto-save ─────────────────────────────────────────────────────────────────
   const pct     = moves.length > 0 && step >= 0 ? Math.round(((step + 1) / moves.length) * 100) : 0;
   const elapsed = `${Math.floor(ticks / 10)}.${ticks % 10}s`;
-  const solved  = moves.length > 0 && step >= moves.length - 1;
+  const solved  = moves.length > 0 && step >= moves.length - 1 && !isAnimating && !activeMove;
   const status  = solved ? "SOLVED" : playing ? "SOLVING" : moves.length > 0 ? "SCRAMBLED" : "READY";
 
   useEffect(() => {
@@ -285,6 +287,7 @@ export default function SolveScreen() {
     setMoves([]);
     setCubeSnapshots([]);
     setStep(-1);
+    targetStepRef.current = -1;
     setTicks(0);
     savedRef.current = false;
     pendingScrambleRef.current = newScramble;
@@ -302,7 +305,7 @@ export default function SolveScreen() {
       let snapshots: CubeState[];
       if (fromScan || !scramble || chipTappedRef.current) {
         sol = solveCubeState(cubeState);
-        snapshots = [cubeState];
+        snapshots = getIntermediateStatesFromState(cubeState, sol);
       } else {
         sol = solveFromScramble(scramble);
         snapshots = getIntermediateStates(scramble, sol);
@@ -310,6 +313,7 @@ export default function SolveScreen() {
       setMoves(sol);
       setCubeSnapshots(snapshots);
       setStep(-1);
+      targetStepRef.current = -1;
       setTicks(0);
       setPlaying(false);
     } catch (e) {
@@ -364,12 +368,22 @@ export default function SolveScreen() {
         chipTappedRef.current = true;
         setCubeState(stringToCubeState(cube.asString()));
       } catch (_) { /* ignore parse errors */ }
+    } else {
+      // Synchronize the logical cubeState from pre-computed snapshots
+      if (cubeSnapshots.length > 0 && targetStepRef.current >= -1) {
+        const snapIndex = targetStepRef.current + 1;
+        if (snapIndex >= 0 && snapIndex < cubeSnapshots.length) {
+          isManualScrambleRef.current = true;
+          setCubeState(cubeSnapshots[snapIndex]);
+        }
+      }
     }
     if (playing && step < moves.length - 1) {
       const delay = playbackMode === "auto" ? stepDelay : 100;
       setTimeout(() => {
         const nextStep = step + 1;
         setStep(nextStep);
+        targetStepRef.current = nextStep;
         handleExecuteMove(moves[nextStep]);
       }, delay);
     } else if (playing && step >= moves.length - 1) {
@@ -386,6 +400,7 @@ export default function SolveScreen() {
     setPlaying(true);
     const startStep = step >= moves.length - 1 ? 0 : step + 1;
     setStep(startStep);
+    targetStepRef.current = startStep;
     if (moves.length > 0) handleExecuteMove(moves[startStep]);
   };
 
@@ -396,6 +411,7 @@ export default function SolveScreen() {
     if (step < moves.length - 1) {
       const nextStep = step + 1;
       setStep(nextStep);
+      targetStepRef.current = nextStep;
       handleExecuteMove(moves[nextStep]);
     }
   };
@@ -403,6 +419,7 @@ export default function SolveScreen() {
   const handlePrev = () => {
     setPlaying(false);
     if (step >= 0) {
+      targetStepRef.current = step - 1;
       handleExecuteMove(moves[step], true);
       setStep((s) => s - 1);
     }
@@ -411,16 +428,12 @@ export default function SolveScreen() {
   // ── Chip handlers ─────────────────────────────────────────────────────────────
   const handleChipPress = (i: number) => {
     setPlaying(false);
-    if (i > step) {
-      for (let j = step + 1; j <= i; j++) {
-        setTimeout(() => handleExecuteMove(moves[j]), (j - step - 1) * 100);
-      }
-    } else if (i < step) {
-      for (let j = step; j > i; j--) {
-        setTimeout(() => handleExecuteMove(moves[j], true), (step - j) * 100);
-      }
+    if (cubeSnapshots.length > 0) {
+      isManualScrambleRef.current = true;
+      setCubeState(cubeSnapshots[i + 1]);
     }
     setStep(i);
+    targetStepRef.current = i;
   };
 
   const handleMovePress = (move: string) => handleExecuteMove(move, false, true);
@@ -479,7 +492,7 @@ export default function SolveScreen() {
         height={height}
         currentMove={activeMove}
         onMoveComplete={handleMoveComplete}
-        animationSpeed={isScrambling ? 8.0 : 3.0}
+        animationSpeed={isScrambling ? 8.0 : Math.max(1.5, 3000 / stepDelay)}
       />
       {/* Bottom strip */}
       <View style={[s.cubeStrip, { borderTopColor: t.BORDER }]}>
@@ -864,7 +877,11 @@ const s = StyleSheet.create({
 
   // Solved overlay
   solvedTextOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     zIndex: 998,
     alignItems: "center",
     justifyContent: "center",

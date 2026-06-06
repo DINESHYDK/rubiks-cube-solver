@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AnimationState, CubeState, FaceName, FaceState, Move, ScanProgress, Solution } from '@/types/cube';
 import { SOLVED_STATE, DEFAULT_ANIMATION_SPEED, SCAN_ORDER } from '@/lib/constants';
 
@@ -29,7 +31,9 @@ interface CubeStore {
   resetAnimation: () => void;
 }
 
-export const useCubeStore = create<CubeStore>((set, get) => ({
+export const useCubeStore = create<CubeStore>()(
+  persist(
+    (set, get) => ({
   // ---- Cube State ----
   cubeState: { ...SOLVED_STATE },
 
@@ -144,4 +148,15 @@ export const useCubeStore = create<CubeStore>((set, get) => ({
         currentMoveIndex: 0,
       },
     })),
-}));
+    }),
+    {
+      name: 'cube-store',
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        cubeState: state.cubeState,
+        scanProgress: state.scanProgress,
+        solution: state.solution,
+      }),
+    }
+  )
+);

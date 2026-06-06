@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect } from "react";
 import { View, Text, StyleSheet, PanResponder } from "react-native";
 import { Canvas, useFrame, useThree, extend } from "@react-three/fiber/native";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import * as THREE from "three/build/three.cjs";
+import * as THREE from "three";
 
 // Register RoundedBoxGeometry as a JSX element in R3F
 extend({ RoundedBoxGeometry });
@@ -12,6 +12,13 @@ declare global {
   namespace JSX {
     interface IntrinsicElements {
       roundedBoxGeometry: any;
+    }
+  }
+  namespace React {
+    namespace JSX {
+      interface IntrinsicElements {
+        roundedBoxGeometry: any;
+      }
     }
   }
 }
@@ -131,7 +138,7 @@ const Cubie = ({
   const cB = cubeState?.B ? COLOR_MAP[cubeState.B[bIdx(x, y)]] : COLORS.B;
 
   return (
-    <group position={[x * spacing, y * spacing, z * spacing]}>
+    <group position={[x * spacing, y * spacing, z * spacing]} name={`cubie_${x}_${y}_${z}`}>
       <mesh>
         <roundedBoxGeometry args={[0.96, 0.96, 0.96, 4, 0.08]} />
         <meshPhysicalMaterial
@@ -194,27 +201,10 @@ const Scene = ({
           initialCubies.current.push([x, y, z]);
   }
 
-  // cubieSlots[N] = current physical grid position of cubie N.
-  // Must stay in sync with Three.js object positions so color lookups
-  // and sticker visibility (x===1 etc.) use the correct coordinates.
-  const [cubieSlots, setCubieSlots] = useState<[number, number, number][]>(
-    () => initialCubies.current.map((p) => [...p] as [number, number, number])
-  );
-
-  // Helper: apply one 90° rotation step in pure JS (same math as the pivot animation)
-  const rotateSlot = (
-    [x, y, z]: [number, number, number],
-    axis: "x" | "y" | "z",
-    dir: number
-  ): [number, number, number] => {
-    const v = new THREE.Vector3(x, y, z);
-    const q = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(axis === "x" ? 1 : 0, axis === "y" ? 1 : 0, axis === "z" ? 1 : 0),
-      dir * (Math.PI / 2)
-    );
-    v.applyQuaternion(q);
-    return [Math.round(v.x), Math.round(v.y), Math.round(v.z)];
-  };
+  // In the "Smoke and Mirrors" approach, the 3D meshes themselves never permanently
+  // accumulate rotation or position changes. They remain static at their original slots
+  // and React repaints their facelet colors when the logical Zustand state updates.
+  // The animation simply rotates the pivot, and snaps the meshes back on completion.
 
   // Geometry reset on mount — clears stale pivot state from tab navigation
   useEffect(() => {
@@ -222,15 +212,16 @@ const Scene = ({
     const lingering = [...pivotRef.current.children];
     for (const c of lingering) {
       cubeGroupRef.current.attach(c);
-      c.position.set(
-        Math.round(c.position.x / spacing) * spacing,
-        Math.round(c.position.y / spacing) * spacing,
-        Math.round(c.position.z / spacing) * spacing
-      );
+      const nameParts = c.name.split("_");
+      if (nameParts[0] === "cubie") {
+        const cx = parseInt(nameParts[1]);
+        const cy = parseInt(nameParts[2]);
+        const cz = parseInt(nameParts[3]);
+        c.position.set(cx * spacing, cy * spacing, cz * spacing);
+      }
+      c.rotation.set(0, 0, 0);
     }
     pivotRef.current.rotation.set(0, 0, 0);
-    // Reset slot tracking to match fresh Three.js positions
-    setCubieSlots(initialCubies.current.map((p) => [...p] as [number, number, number]));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -266,20 +257,21 @@ const Scene = ({
       cubeGroupRef.current.rotation.x = rotationRef.current.x;
     }
 
-    // Parent cleared the move mid-animation (tab navigation) — unblock the queue
+    // Parent cleared the move mid-animation (tab navigation) — snap back
     if (animating && !currentMove && pivotRef.current && cubeGroupRef.current) {
       const lingering = [...pivotRef.current.children];
       for (const c of lingering) {
         cubeGroupRef.current.attach(c);
-        c.position.set(
-          Math.round(c.position.x / spacing) * spacing,
-          Math.round(c.position.y / spacing) * spacing,
-          Math.round(c.position.z / spacing) * spacing
-        );
+        const nameParts = c.name.split("_");
+        if (nameParts[0] === "cubie") {
+          const cx = parseInt(nameParts[1]);
+          const cy = parseInt(nameParts[2]);
+          const cz = parseInt(nameParts[3]);
+          c.position.set(cx * spacing, cy * spacing, cz * spacing);
+        }
+        c.rotation.set(0, 0, 0);
       }
       pivotRef.current.rotation.set(0, 0, 0);
-      // Reset slot tracking — aborted animation leaves state unknown, reset to initial
-      setCubieSlots(initialCubies.current.map((p) => [...p] as [number, number, number]));
       setAnimating(false);
     }
 
@@ -293,58 +285,26 @@ const Scene = ({
         currentMove.dir * (Math.PI / 2) * currentMove.angle * easeInOut(progress);
 
       if (progress >= 1) {
-        // 1. Snap pivot to exact final angle
-        pivotRef.current.rotation[currentMove.axis as "x" | "y" | "z"] =
-          currentMove.dir * (Math.PI / 2) * currentMove.angle;
-        pivotRef.current.updateMatrixWorld();
-
         const pivotChildren = [...pivotRef.current.children];
         for (let i = pivotChildren.length - 1; i >= 0; i--) {
           const c = pivotChildren[i];
 
-          // 2. Capture true world position + quaternion before detaching
-          const worldPos  = new THREE.Vector3();
-          const worldQuat = new THREE.Quaternion();
-          c.getWorldPosition(worldPos);
-          c.getWorldQuaternion(worldQuat);
-
-          // 3. Re-attach to main cube group
+          // 1. Re-attach to main group
           cubeGroupRef.current.attach(c);
 
-          // 4. Snap position to grid
-          c.position.set(
-            Math.round(worldPos.x / spacing) * spacing,
-            Math.round(worldPos.y / spacing) * spacing,
-            Math.round(worldPos.z / spacing) * spacing
-          );
-
-          // 5. Apply exact world quaternion then snap Euler angles —
-          //    avoids floating-point drift corrupting 180° (U2/F2/etc.) snaps
-          c.quaternion.copy(worldQuat);
-          const euler = new THREE.Euler().setFromQuaternion(c.quaternion);
-          c.rotation.set(
-            Math.round(euler.x / (Math.PI / 2)) * (Math.PI / 2),
-            Math.round(euler.y / (Math.PI / 2)) * (Math.PI / 2),
-            Math.round(euler.z / (Math.PI / 2)) * (Math.PI / 2)
-          );
+          // 2. Snap position & rotation back to static coordinates
+          const nameParts = c.name.split("_");
+          if (nameParts[0] === "cubie") {
+            const cx = parseInt(nameParts[1]);
+            const cy = parseInt(nameParts[2]);
+            const cz = parseInt(nameParts[3]);
+            c.position.set(cx * spacing, cy * spacing, cz * spacing);
+          }
+          c.rotation.set(0, 0, 0);
         }
 
-        // 6. Reset pivot for next move
+        // 3. Reset pivot rotation
         pivotRef.current.rotation.set(0, 0, 0);
-
-        // 7. Update React slot tracking to match new Three.js positions.
-        //    Without this, Cubie color lookups and sticker visibility use
-        //    stale original coordinates → visual corruption after moves.
-        const { axis, layer, dir, angle } = currentMove;
-        setCubieSlots((prev) =>
-          prev.map((slot) => {
-            const axisCoord = slot[axis === "x" ? 0 : axis === "y" ? 1 : 2];
-            if (Math.abs(axisCoord - layer) > 0.1) return slot;
-            let result = slot;
-            for (let a = 0; a < angle; a++) result = rotateSlot(result, axis, dir);
-            return result;
-          })
-        );
 
         setAnimating(false);
         if (onMoveComplete) onMoveComplete();
@@ -362,7 +322,7 @@ const Scene = ({
 
       <group ref={cubeGroupRef}>
         <group ref={pivotRef} />
-        {cubieSlots.map((pos, idx) => (
+        {initialCubies.current.map((pos, idx) => (
           <Cubie key={idx} pos={pos} cubeState={cubeState} />
         ))}
       </group>
@@ -431,18 +391,22 @@ export default function Cube3D({
   animationSpeed = 3.0,
   autoRotate = false,
   paused = false,
-  frameloop = "always",
+  frameloop = "demand",
 }: Cube3DProps) {
+  const [isDragging, setIsDragging] = useState(false);
   const rotationRef   = useRef({ x: 0.6, y: 0.7 });
   const lastTouchRef  = useRef({ x: 0, y: 0 });
   const invalidateRef = useRef<(() => void) | null>(null);
 
   const panResponder = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => !autoRotate,
-      onMoveShouldSetPanResponder: () => !autoRotate,
+      // Strict animation lock: ignore gestures when a move animation is playing
+      onStartShouldSetPanResponder: () => !autoRotate && !currentMove,
+      onMoveShouldSetPanResponder: () => !autoRotate && !currentMove,
       onPanResponderGrant: (_, g) => {
         lastTouchRef.current = { x: g.x0, y: g.y0 };
+        setIsDragging(true);
+        invalidateRef.current?.();
       },
       onPanResponderMove: (_, g) => {
         const dx = g.moveX - lastTouchRef.current.x;
@@ -455,8 +419,21 @@ export default function Cube3D({
         // In demand mode, drag must manually trigger a re-render
         invalidateRef.current?.();
       },
+      onPanResponderRelease: () => {
+        setIsDragging(false);
+        invalidateRef.current?.();
+      },
+      onPanResponderTerminate: () => {
+        setIsDragging(false);
+        invalidateRef.current?.();
+      },
     })
   ).current;
+
+  // Dynamically switch R3F frameloop to always only during animations or active dragging
+  const computedFrameloop = (currentMove || autoRotate || isDragging || frameloop === "always")
+    ? "always"
+    : "demand";
 
   return (
     <Cube3DErrorBoundary height={height}>
@@ -467,9 +444,9 @@ export default function Cube3D({
         <Canvas
           camera={{ position: [5, 4, 6], fov: 45 }}
           gl={{ antialias: true }}
-          frameloop={frameloop}
+          frameloop={computedFrameloop}
         >
-          {frameloop === "demand" && (
+          {computedFrameloop === "demand" && (
             <InvalidateBridge invalidateRef={invalidateRef} />
           )}
           <Scene
